@@ -69,3 +69,6 @@ after_migrate = [
 	"randompack_ai.surfaces.randompack_chat.ensure_intake_platform",
 	"randompack_ai.surfaces.randompack_project_chat.ensure_project_platform",
 ]
+
+# Which phase outputs the client receives (kernel seam: deliverables.materialize).
+friday_customer_title_map = ["randompack_ai.deliverables.CUSTOMER_TITLE_MAP"]

@@ -1,0 +1,8 @@
+[pre_model_sync]
+# Re-home the brand DocTypes from the Friday kernel's module into this app's,
+# so Frappe's schema sync and orphan sweep both see them here.
+randompack_ai.patches.v1_0.rehome_from_kernel
+
+[post_model_sync]
+randompack_ai.patches.v1_0.rename_randompack_event_to_connector_event
+randompack_ai.patches.v1_0.migrate_randompack_settings_to_connector

@@ -40,6 +40,8 @@ from __future__ import annotations
 import json
 
 import frappe
+
+from randompack_ai import branding
 from frappe.friday_core.surfaces import chat_spine
 
 __all__ = ["chat_send", "provision_advisor_profile", "validate_action"]
@@ -61,7 +63,7 @@ _GATE2_DECISIONS = ("Approved", "Refinement Requested")
 # ---------------------------------------------------------------------------
 
 ADVISOR_SYSTEM_PROMPT = (
-	"You are Friday, the project advisor inside a RandomPack customer's portal. The customer "
+	"You are {assistant}, the project advisor inside a RandomPack customer's portal. The customer "
 	"has bought a branding engagement; you can see their project's live state below. Discuss "
 	"the project warmly and concretely: explain phases, deliverables, and what the gates mean; "
 	"help them reason about decisions anchored on THEIR brief — their brand personality, "
@@ -139,6 +141,11 @@ def _context_block(context: dict) -> str:
 
 
 def build_system_prompt(context: dict | None) -> str:
+	"""Persona + project state, with the deployment's assistant name resolved."""
+	return branding.apply(_build_system_prompt_unbranded(context))
+
+
+def _build_system_prompt_unbranded(context: dict | None) -> str:
 	"""Persona + the rendered project state. Context absent → discuss-only, no state block."""
 	if not context:
 		return (
@@ -356,7 +363,7 @@ def provision_advisor_profile() -> dict:
 			"doctype": "Agent Profile",
 			"profile_name": ADVISOR_PROFILE,
 			"agent_role": "Worker",
-			"system_prompt": ADVISOR_SYSTEM_PROMPT,
+			"system_prompt": branding.apply(ADVISOR_SYSTEM_PROMPT),
 			"status": "Active",
 		}
 	).insert(ignore_permissions=True)

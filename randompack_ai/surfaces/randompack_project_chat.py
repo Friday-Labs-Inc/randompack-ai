@@ -357,6 +357,14 @@ def provision_advisor_profile() -> dict:
 	"""
 	platform = ensure_project_platform()
 	if frappe.db.exists("Agent Profile", ADVISOR_PROFILE):
+		# Re-brand in place. The assistant name is usually configured AFTER the
+		# profile is first provisioned, and nothing else ever rewrites this row —
+		# so without this a white-labelled site keeps the old name on disk.
+		profile = frappe.get_doc("Agent Profile", ADVISOR_PROFILE)
+		branded = branding.apply(ADVISOR_SYSTEM_PROMPT)
+		if profile.system_prompt != branded:
+			profile.system_prompt = branded
+			profile.save(ignore_permissions=True)
 		return {"profile": ADVISOR_PROFILE, "created": False, **platform}
 	frappe.get_doc(
 		{

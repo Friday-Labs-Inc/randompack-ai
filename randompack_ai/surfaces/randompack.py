@@ -26,6 +26,8 @@ import json
 
 import frappe
 
+from randompack_ai import branding
+
 from frappe.friday_core.connectors import core as connector_core
 
 # This connector's registry id (the Connector row created by the 81b migration).
@@ -254,7 +256,7 @@ def handle_project_created(data: dict, event) -> None:
 	from randompack_ai.integrations.randompack_client import post_project_note
 
 	if rp_project:
-		post_project_note(rp_project, note="Friday started the brand pipeline (strategy → directions → gates → delivery).")
+		post_project_note(rp_project, note=branding.apply("{assistant} started the brand pipeline (strategy → directions → gates → delivery)."))
 
 
 def handle_gate_decided(data: dict, event) -> None:
@@ -282,7 +284,7 @@ def handle_gate_decided(data: dict, event) -> None:
 	chosen = str(data.get("chosen_direction") or "")
 	if decision == "Refinement Requested":
 		_warroom(f"**[{rp_project}]** refinement requested: {str(data.get('client_comments') or '')}")
-		post_project_note(rp_project, note="Friday noted the refinement request; awaiting the updated direction.")
+		post_project_note(rp_project, note=branding.apply("{assistant} noted the refinement request; awaiting the updated direction."))
 		return
 
 	doc = frappe.get_doc("Brand Brief", brief)

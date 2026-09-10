@@ -15,13 +15,26 @@ DEFAULT_ASSISTANT_NAME = "Friday"
 
 
 def assistant_name() -> str:
-	"""The configured assistant name for the current site, else the default."""
+	"""The configured assistant name for the current site, else the default.
+
+	Every fallback here is a site silently showing the WRONG brand, so the only
+	swallowed case is the one that is genuinely expected — no site bound. A
+	non-string value is a misconfiguration and gets logged rather than hidden.
+	"""
 	try:
-		configured = (frappe.conf.get("friday_assistant_name") or "").strip()
-	except Exception:
-		# No site bound (import-time use, some CLI paths) — fall back rather than raise.
-		configured = ""
-	return configured or DEFAULT_ASSISTANT_NAME
+		raw = frappe.conf.get("friday_assistant_name")
+	except (AttributeError, RuntimeError):
+		# No site bound (import-time use, some CLI paths) — fall back, don't raise.
+		return DEFAULT_ASSISTANT_NAME
+	if raw is None:
+		return DEFAULT_ASSISTANT_NAME
+	if not isinstance(raw, str):
+		frappe.log_error(
+			title="branding: friday_assistant_name is not a string",
+			message=f"got {type(raw).__name__}: {raw!r} — falling back to {DEFAULT_ASSISTANT_NAME}",
+		)
+		return DEFAULT_ASSISTANT_NAME
+	return raw.strip() or DEFAULT_ASSISTANT_NAME
 
 
 def apply(text: str) -> str:

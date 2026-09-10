@@ -219,7 +219,10 @@ class TestChatFirstIntake(unittest.TestCase):
 
 	def test_prompt_without_context_uses_general_essentials(self):
 		p = chat._build_system_prompt(None)
-		self.assertIn("name and email", p)  # from _GENERAL_ESSENTIALS
+		# Email leads the essentials: it is the lead record, captured before the
+		# conversation can be lost. (Was "name and email" until the asking order
+		# was reversed — the name is optional now.)
+		self.assertIn("their email FIRST", p)  # from _GENERAL_ESSENTIALS
 		self.assertNotIn("PRIORITY ORDER", p)
 
 	def test_every_prompt_variant_forbids_refusal(self):

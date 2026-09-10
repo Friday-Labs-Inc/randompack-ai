@@ -26,11 +26,30 @@ class TestConversationalRules(unittest.TestCase):
 		"""The reply and the brief the customer is watching must agree."""
 		self.assertIn("ECHO WHAT YOU CAPTURED", chat.INTAKE_SYSTEM_PROMPT)
 
-	def test_name_before_email_and_email_asked_once(self):
+	def test_email_is_asked_first_with_a_reason(self):
+		"""Email is the lead record: it must be captured before the visitor can be lost."""
 		prompt = chat.INTAKE_SYSTEM_PROMPT
-		self.assertIn("ASK FOR THEIR NAME BEFORE ANYTHING ELSE", prompt)
-		self.assertIn("ONCE", prompt)
+		self.assertIn("GET THEIR EMAIL FIRST", prompt)
+		self.assertIn("FIRST reply", prompt)
 		self.assertIn("becomes their login", prompt)
+
+	def test_a_deflection_never_blocks_the_conversation(self):
+		"""A deflection that ends the chat captures nothing — worse than a late email."""
+		prompt = chat.INTAKE_SYSTEM_PROMPT
+		self.assertIn("IF THEY DEFLECT, DO NOT BLOCK", prompt)
+		self.assertIn("ask again ONCE", prompt)
+		self.assertIn("never refuse to continue", prompt)
+
+	def test_name_is_optional_and_never_a_gate(self):
+		prompt = chat.INTAKE_SYSTEM_PROMPT
+		self.assertIn("THEIR NAME IS OPTIONAL", prompt)
+		self.assertIn("Never make it a gate", prompt)
+
+	def test_phone_is_welcomed_but_not_demanded(self):
+		prompt = chat.INTAKE_SYSTEM_PROMPT
+		self.assertIn("phone number", prompt)
+		self.assertIn("never demand both", prompt)
+		self.assertIn("phone", chat._QUESTION_HINTS)
 
 	def test_brevity_and_no_double_pushing(self):
 		prompt = chat.INTAKE_SYSTEM_PROMPT

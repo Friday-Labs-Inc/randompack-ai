@@ -40,6 +40,8 @@ from __future__ import annotations
 import json
 
 import frappe
+
+from randompack_ai import branding
 from frappe.friday_core.conversation.intake import extract_deltas
 from frappe.friday_core.llm.usage import record_usage
 from frappe.friday_core.surfaces import chat_spine
@@ -220,7 +222,7 @@ def _extraction_fields() -> list[dict]:
 # "what's still needed" steering is appended by `_build_system_prompt()` from the `context`
 # RandomPack sends each turn, so the interview tracks exactly what the brief still lacks.
 INTAKE_SYSTEM_PROMPT = (
-	"You are Friday's warm, sharp brand-intake assistant for RandomPack. This live chat is the "
+	"You are {assistant}, the warm, sharp brand-intake assistant for RandomPack. This live chat is the "
 	"ENTIRE intake — you gather everything needed for the brand brief through natural "
 	"conversation, and the customer only reviews at the very end (there is no separate form to "
 	"fill). Each turn: in 1-2 warm sentences acknowledge what they just told you, then ask the "
@@ -277,6 +279,11 @@ def _hint_lines(names: list[str]) -> str:
 
 
 def _build_system_prompt(context: dict | None) -> str:
+	"""Per-turn system prompt, with the deployment's assistant name resolved."""
+	return branding.apply(_build_system_prompt_unbranded(context))
+
+
+def _build_system_prompt_unbranded(context: dict | None) -> str:
 	"""The per-turn system prompt: base persona + steering from RandomPack's `context`.
 
 	`context = {missing_required: [...], missing_questionnaire: [...]}` is RP's ground truth
@@ -467,13 +474,21 @@ def provision_intake_profile() -> dict:
 	platform = ensure_intake_platform()
 
 	if frappe.db.exists("Agent Profile", INTAKE_PROFILE):
+		# Re-brand in place. The assistant name is usually configured AFTER the
+		# profile is first provisioned, and nothing else ever rewrites this row —
+		# so without this a white-labelled site keeps the old name on disk.
+		profile = frappe.get_doc("Agent Profile", INTAKE_PROFILE)
+		branded = branding.apply(INTAKE_SYSTEM_PROMPT)
+		if profile.system_prompt != branded:
+			profile.system_prompt = branded
+			profile.save(ignore_permissions=True)
 		return {"profile": INTAKE_PROFILE, "created": False, **platform}
 	frappe.get_doc(
 		{
 			"doctype": "Agent Profile",
 			"profile_name": INTAKE_PROFILE,
 			"agent_role": "Worker",
-			"system_prompt": INTAKE_SYSTEM_PROMPT,
+			"system_prompt": branding.apply(INTAKE_SYSTEM_PROMPT),
 			"status": "Active",
 		}
 	).insert(ignore_permissions=True)

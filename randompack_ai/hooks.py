@@ -66,8 +66,11 @@ after_migrate = [
 	# Apprenticeship graduation flags (design 95).
 	"randompack_ai.domains.randompack_study.ensure_graduation_flags",
 	# Chat surfaces: the public intake wizard and the authenticated project chat.
-	"randompack_ai.surfaces.randompack_chat.ensure_intake_platform",
-	"randompack_ai.surfaces.randompack_project_chat.ensure_project_platform",
+	# The provisioners ensure their own platform row first, and re-apply the
+	# deployment's assistant name to the stored prompt — so `set-config
+	# friday_assistant_name` takes effect on the next migrate.
+	"randompack_ai.surfaces.randompack_chat.provision_intake_profile",
+	"randompack_ai.surfaces.randompack_project_chat.provision_advisor_profile",
 ]
 
 # Which phase outputs the client receives (kernel seam: deliverables.materialize).

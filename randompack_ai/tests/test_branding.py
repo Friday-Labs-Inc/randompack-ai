@@ -4,9 +4,10 @@
 """Deployment branding (branding.py) and its use in the client-facing prompts.
 
 DB-free: `frappe.conf` is patched directly. The point of these tests is that the
-assistant's name is per-site CONFIGURATION — a studio deploying RandomPack under
-its own brand must never need a code change, and a site that configures nothing
-must keep saying "Friday".
+assistant's name AND the studio's name are per-site CONFIGURATION — a studio
+deploying RandomPack under its own brand must never need a code change, a site
+that configures nothing must keep saying "Friday", and no customer must ever be
+greeted by the name of the product their studio happens to run on.
 """
 
 from __future__ import annotations
@@ -46,10 +47,74 @@ class TestAssistantName(unittest.TestCase):
 			self.assertEqual(branding.assistant_name(), "Friday")
 
 
+class TestStudioName(unittest.TestCase):
+	"""The studio name a customer hears. Its default is deliberately generic:
+	an unconfigured site saying "I'm Luma from RandomPack" introduces a company
+	the customer is not talking to."""
+
+	def test_defaults_to_a_generic_phrase_not_the_product(self):
+		with patch.object(branding.frappe, "conf", {}):
+			name = branding.studio_name()
+		self.assertEqual(name, "the studio")
+		self.assertNotIn("RandomPack", name)
+
+	def test_reads_the_site_config_key(self):
+		with patch.object(branding.frappe, "conf", {"friday_studio_name": "KNC"}):
+			self.assertEqual(branding.studio_name(), "KNC")
+
+	def test_blank_and_whitespace_fall_back_to_the_default(self):
+		for value in ("", "   ", None):
+			with patch.object(branding.frappe, "conf", {"friday_studio_name": value}):
+				self.assertEqual(branding.studio_name(), "the studio")
+
+	def test_no_bound_site_falls_back_rather_than_raising(self):
+		class Exploding:
+			def get(self, *_a, **_k):
+				raise RuntimeError("no site bound")
+
+		with patch.object(branding.frappe, "conf", Exploding()):
+			self.assertEqual(branding.studio_name(), "the studio")
+
+
+class TestNoPromptNamesTheProduct(unittest.TestCase):
+	"""A ratchet.
+
+	knc.studio's customers were greeted with "I'm Luma from RandomPack" — the
+	assistant name was configurable, the studio name behind it was not. Any
+	literal product name reintroduced into a customer-facing prompt fails here.
+	"""
+
+	PROMPTS = {
+		"INTAKE_SYSTEM_PROMPT": chat.INTAKE_SYSTEM_PROMPT,
+		"ADVISOR_SYSTEM_PROMPT": project_chat.ADVISOR_SYSTEM_PROMPT,
+	}
+
+	def test_no_customer_facing_prompt_names_the_product(self):
+		for label, text in self.PROMPTS.items():
+			with self.subTest(prompt=label):
+				self.assertNotIn("RandomPack", text)
+				self.assertNotIn("Random Pack", text)
+
+	def test_extraction_vocabulary_names_no_product(self):
+		for field in chat._FIELDS:
+			with self.subTest(field=field["name"]):
+				self.assertNotIn("RandomPack", field["description"])
+
+
 class TestApply(unittest.TestCase):
 	def test_placeholder_is_replaced(self):
 		with patch.object(branding.frappe, "conf", {"friday_assistant_name": "Luma"}):
 			self.assertEqual(branding.apply("You are {assistant}, hello"), "You are Luma, hello")
+
+	def test_studio_placeholder_is_replaced(self):
+		with patch.object(branding.frappe, "conf", {"friday_studio_name": "KNC"}):
+			self.assertEqual(branding.apply("assistant for {studio}."), "assistant for KNC.")
+
+	def test_both_placeholders_resolve_together(self):
+		conf = {"friday_assistant_name": "Luma", "friday_studio_name": "KNC"}
+		with patch.object(branding.frappe, "conf", conf):
+			out = branding.apply("You are {assistant}, the intake assistant for {studio}.")
+		self.assertEqual(out, "You are Luma, the intake assistant for KNC.")
 
 	def test_stray_braces_are_left_alone(self):
 		# A plain replace, not str.format — unbalanced copy must never raise mid-conversation.
@@ -62,10 +127,12 @@ class TestPromptsCarryThePlaceholder(unittest.TestCase):
 
 	def test_intake_prompt_is_templated(self):
 		self.assertIn("{assistant}", chat.INTAKE_SYSTEM_PROMPT)
+		self.assertIn("{studio}", chat.INTAKE_SYSTEM_PROMPT)
 		self.assertNotIn(branding.DEFAULT_ASSISTANT_NAME, chat.INTAKE_SYSTEM_PROMPT)
 
 	def test_advisor_prompt_is_templated(self):
 		self.assertIn("{assistant}", project_chat.ADVISOR_SYSTEM_PROMPT)
+		self.assertIn("{studio}", project_chat.ADVISOR_SYSTEM_PROMPT)
 		self.assertNotIn(branding.DEFAULT_ASSISTANT_NAME, project_chat.ADVISOR_SYSTEM_PROMPT)
 
 

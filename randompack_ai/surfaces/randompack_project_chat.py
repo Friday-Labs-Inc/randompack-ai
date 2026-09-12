@@ -16,7 +16,7 @@ THE TRUST BOUNDARY (locked with RandomPack): Friday proposes, the human confirms
 executes. This surface NEVER fires `decide_gate` or any irreversible business action.
 Defence-in-depth on top: every proposed action is validated against the action schema
 AND the currently-open gate from RP's per-turn context — a hallucinated or out-of-context
-proposal (a Gate 2 action while Gate 1 is open, an unknown direction label) is dropped
+proposal (an action naming a gate that is not the open one, an unknown direction label) is dropped
 before it can reach the confirm card.
 
 Topology mirrors the intake surface (CONTRACT §4): browser ── RP portal (authenticated
@@ -53,9 +53,21 @@ _ADAPTER_MODULE = "randompack_ai.surfaces.randompack_project_chat"
 
 # The action vocabulary — OWNED BY RANDOMPACK (their domain enums; they map to their
 # Brand Brief workflow + decide_gate). Friday emits to spec and validates hard.
-_GATES = ("Gate 1", "Gate 2")
-_GATE1_DECISIONS = ("Direction Selected",)
-_GATE2_DECISIONS = ("Approved", "Refinement Requested")
+# What a gate allows follows from what it ASKS, never from where it sits. The
+# proposal names each gate and decides whether it offers a choice; there is no
+# fixed pair any more, and a third gate must not be describable as "no gate".
+_CHOICE_DECISIONS = ("Direction Selected",)
+_REVIEW_DECISIONS = ("Approved", "Refinement Requested")
+
+
+def _open_gate_label(open_gate: dict) -> str | None:
+	"""The gate's identity — the label the studio quoted, not its position."""
+	return open_gate.get("gate") or open_gate.get("which")
+
+
+def _offered(open_gate: dict) -> list[str]:
+	"""The options this gate puts to the client; empty for a review gate."""
+	return [d.get("label") for d in (open_gate.get("directions") or []) if d.get("label")]
 
 
 # ---------------------------------------------------------------------------
@@ -95,17 +107,22 @@ def _context_block(context: dict) -> str:
 	if context.get("phase"):
 		lines.append(f"- Current phase: {context['phase']}")
 
+	# What a gate asks decides how it is described, not where it sits. The
+	# proposal names each one and says whether it offers a choice; a fixed
+	# "Gate 1 means pick a direction, Gate 2 means approve" described the third
+	# gate of a website engagement as no gate at all.
 	open_gate = context.get("open_gate") or {}
-	which = open_gate.get("which")
-	if which == "Gate 1":
-		labels = ", ".join(d.get("label", "?") for d in (open_gate.get("directions") or []))
+	label = open_gate.get("gate") or open_gate.get("which")
+	directions = [d.get("label") for d in (open_gate.get("directions") or []) if d.get("label")]
+	if label and directions:
 		lines.append(
-			f"- OPEN GATE: Gate 1 — the customer must choose ONE direction ({labels or 'A, B, C'}). "
-			"Help them decide; when they clearly choose, that choice becomes a confirm card."
+			f"- OPEN GATE: “{label}” — the customer must choose ONE of: {', '.join(directions)}. "
+			"Help them decide; when they clearly choose, that choice becomes a confirm card. "
+			"Never offer an option that is not in that list."
 		)
-	elif which == "Gate 2":
+	elif label:
 		lines.append(
-			"- OPEN GATE: Gate 2 — the customer must Approve the final work or request refinement. "
+			f"- OPEN GATE: “{label}” — the customer must Approve the work or request refinement. "
 			"Help them decide; their decision becomes a confirm card."
 		)
 	else:
@@ -175,15 +192,18 @@ _ACTION_SYSTEM = (
 
 def _action_messages(transcript_text: str, context: dict) -> list[dict]:
 	open_gate = context.get("open_gate") or {}
-	which = open_gate.get("which") or "none"
-	if which == "Gate 1":
-		labels = [d.get("label") for d in (open_gate.get("directions") or []) if d.get("label")]
+	label = _open_gate_label(open_gate)
+	labels = _offered(open_gate)
+	if label and labels:
 		gate_desc = (
-			f"OPEN GATE: Gate 1. Allowed decision: Direction Selected (direction REQUIRED, one of: "
-			f"{', '.join(labels) if labels else 'A, B, C'})."
+			f'OPEN GATE: "{label}". Allowed decision: Direction Selected '
+			f"(direction REQUIRED, one of: {', '.join(labels)})."
 		)
-	elif which == "Gate 2":
-		gate_desc = "OPEN GATE: Gate 2. Allowed decisions: Approved | Refinement Requested (no direction)."
+	elif label:
+		gate_desc = (
+			f'OPEN GATE: "{label}". Allowed decisions: Approved | Refinement Requested '
+			"(no direction)."
+		)
 	else:
 		gate_desc = "NO gate is open — action must be null."
 	user = f"{gate_desc}\n\nCONVERSATION (the LAST user message is the one to judge):\n{transcript_text}"
@@ -220,35 +240,39 @@ def validate_action(action: dict | None, context: dict | None) -> dict | None:
 
 	The rules (locked with RandomPack):
 	  - No open gate → no action is ever valid.
-	  - `action.gate` MUST equal the open gate (kills the wrong-gate hallucination).
-	  - Gate 1 → only "Direction Selected"; `direction` REQUIRED and ∈ the offered labels.
-	  - Gate 2 → only "Approved" | "Refinement Requested"; NO direction.
+	  - `action.gate` MUST equal the open gate's own label (kills the wrong-gate
+	    hallucination, and is the string RP validates and completes the task on).
+	  - A gate that OFFERS options → only "Direction Selected"; `direction`
+	    REQUIRED and ∈ the offered labels.
+	  - Any other gate → only "Approved" | "Refinement Requested"; NO direction.
 	  - confidence clamped to [0, 1]; note coerced to str|None.
 	"""
 	if not isinstance(action, dict) or not context:
 		return None
 	open_gate = (context.get("open_gate") or {}) if isinstance(context, dict) else {}
-	which = open_gate.get("which")
-	if which not in _GATES:
+	if not _open_gate_label(open_gate):
 		return None  # no open gate → discuss only
 
 	if action.get("kind") != "gate_decision":
 		return None
-	if action.get("gate") != which:
+	# The gate's identity is the label the studio quoted — the same string
+	# RandomPack validates and completes the task on.
+	label = _open_gate_label(open_gate)
+	if not label or action.get("gate") != label:
 		return None  # out-of-context gate → dropped
 
 	decision = action.get("decision")
 	direction = action.get("direction")
-	if which == "Gate 1":
-		if decision not in _GATE1_DECISIONS:
+	labels = _offered(open_gate)
+	if labels:
+		if decision not in _CHOICE_DECISIONS:
 			return None
-		labels = [d.get("label") for d in (open_gate.get("directions") or []) if d.get("label")]
-		if not direction or (labels and direction not in labels):
+		if not direction or direction not in labels:
 			return None
-	else:  # Gate 2
-		if decision not in _GATE2_DECISIONS:
+	else:
+		if decision not in _REVIEW_DECISIONS:
 			return None
-		direction = None  # never carries a direction
+		direction = None  # a review gate never carries a direction
 
 	try:
 		confidence = max(0.0, min(1.0, float(action.get("confidence", 0.0))))
@@ -260,7 +284,9 @@ def validate_action(action: dict | None, context: dict | None) -> dict | None:
 	out = {
 		"type": "action",
 		"kind": "gate_decision",
-		"gate": which,
+		# The quoted label, which is what RandomPack validates the decision
+		# against and what completes the gate task.
+		"gate": label,
 		"decision": decision,
 		"note": note,
 		"confidence": confidence,
@@ -275,7 +301,7 @@ def _make_action_pass(context: dict | None):
 
 	def _action_pass(history_msgs: list[dict], message: str, reply: str, provider):
 		open_gate = (context or {}).get("open_gate") or {}
-		if open_gate.get("which") not in _GATES:
+		if not _open_gate_label(open_gate):
 			return [], {}  # no open gate → skip the model call entirely
 		usage: dict = {}
 		try:

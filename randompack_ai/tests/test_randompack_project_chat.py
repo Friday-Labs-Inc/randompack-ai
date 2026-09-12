@@ -126,14 +126,14 @@ class TestAdvisorPrompt(unittest.TestCase):
 		self.assertIn("Halcyon — Essentials", p)
 		self.assertIn("Day 6 of 10", p)
 		self.assertIn("Buildout", p)
-		self.assertIn("OPEN GATE: Gate 2", p)
+		self.assertIn("OPEN GATE: “Gate 2”", p)
 		self.assertIn("Brand System", p)
 		self.assertIn("Gate 1: Direction Selected (B)", p)
 		self.assertIn("Bold, Warm", p)
 
 	def test_gate1_lists_the_direction_labels(self):
 		p = pc.build_system_prompt(_GATE1)
-		self.assertIn("OPEN GATE: Gate 1", p)
+		self.assertIn("OPEN GATE: “Gate 1”", p)
 		self.assertIn("A, B, C", p)
 
 	def test_never_invent_directions_rule_is_always_present(self):
@@ -203,3 +203,60 @@ class TestEndpointIsRoutable(unittest.TestCase):
 
 if __name__ == "__main__":
 	unittest.main()
+
+
+class TestAGateIsWhatItAsks(unittest.TestCase):
+	"""A proposal names each gate and decides whether it offers a choice.
+
+	Every test above uses "Gate 1" and "Gate 2", which is the coincidence that
+	hid this: the advisor treated those two strings as the only gates that
+	exist, so the third gate of a website engagement was described to the model
+	as no gate at all, and any decision on it was dropped.
+	"""
+
+	def _context(self, label, options=None):
+		gate = {"gate": label, "which": "Gate 3"}
+		if options:
+			gate["directions"] = [{"label": o} for o in options]
+		return {"project_title": "Halcyon", "open_gate": gate}
+
+	def _action(self, label, decision, direction=None):
+		return {
+			"kind": "gate_decision",
+			"gate": label,
+			"decision": decision,
+			"direction": direction,
+			"confidence": 0.9,
+		}
+
+	def test_a_third_gate_is_described_to_the_model(self):
+		prompt = pc.build_system_prompt(self._context("Build review"))
+		self.assertIn("Build review", prompt)
+		self.assertNotIn("No gate is open", prompt)
+
+	def test_a_third_gate_accepts_a_review_decision(self):
+		ctx = self._context("Build review")
+		out = pc.validate_action(self._action("Build review", "Approved"), ctx)
+		self.assertIsNotNone(out)
+		self.assertEqual(out["gate"], "Build review")
+
+	def test_a_choosing_gate_lists_its_own_options(self):
+		ctx = self._context("Choose a direction", ["Quiet", "Bold", "Warm"])
+		prompt = pc.build_system_prompt(ctx)
+		self.assertIn("Quiet, Bold, Warm", prompt)
+
+	def test_an_option_never_offered_is_dropped(self):
+		ctx = self._context("Choose a direction", ["Quiet", "Bold", "Warm"])
+		action = self._action("Choose a direction", "Direction Selected", direction="A")
+		self.assertIsNone(pc.validate_action(action, ctx))
+
+	def test_an_offered_option_survives(self):
+		ctx = self._context("Choose a direction", ["Quiet", "Bold", "Warm"])
+		action = self._action("Choose a direction", "Direction Selected", direction="Bold")
+		out = pc.validate_action(action, ctx)
+		self.assertEqual(out["direction"], "Bold")
+
+	def test_naming_a_gate_that_is_not_open_is_dropped(self):
+		ctx = self._context("Build review")
+		self.assertIsNone(
+			pc.validate_action(self._action("Sitemap sign-off", "Approved"), ctx))

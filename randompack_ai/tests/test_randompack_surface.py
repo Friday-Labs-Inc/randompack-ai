@@ -114,3 +114,76 @@ class TestOutboundContractCalls(unittest.TestCase):
 
 if __name__ == "__main__":
 	unittest.main()
+
+
+class TestBriefReachesTheCreativeDirectorAtIntake(unittest.TestCase):
+	"""brief.submitted used to be received, recorded, and ignored. The Brand
+	Brief was built only inside payment.received — so the person responsible
+	for judging an enquiry learned of it when money landed."""
+
+	_SNAPSHOT = {
+		"company_name": "Loop Coffee", "full_name": "Ari", "what_you_do": "Roast coffee.",
+		"differentiator": "Single origin.", "personality": ["warm", "honest"],
+	}
+
+	def _event(self):
+		event = MagicMock()
+		event.event_id = "evt-1"
+		return event
+
+	@patch(f"{_S}._warroom")
+	@patch(f"{_S}._assign_to_cd")
+	@patch(f"{_S}.frappe")
+	def test_creates_the_brief_and_a_task_on_the_desk(self, mock_frappe, assign, warroom):
+		mock_frappe.db.get_value.return_value = None   # no brief, no rp_project, no project yet
+		mock_frappe.db.exists.return_value = False       # no task yet
+		mock_frappe.as_json.side_effect = json.dumps
+		inserted = MagicMock()
+		inserted.name = "TASK-1"
+		mock_frappe.get_doc.return_value.insert.return_value = inserted
+
+		randompack.handle_brief_submitted(
+			{"brief": "RP-BRIEF-9", "project": "PROJ-9", "company_name": "Loop Coffee",
+			 "brief_snapshot": self._SNAPSHOT}, self._event())
+
+		payloads = [c[0][0] for c in mock_frappe.get_doc.call_args_list if isinstance(c[0][0], dict)]
+		brief = next(p for p in payloads if p["doctype"] == "Brand Brief")
+		task = next(p for p in payloads if p["doctype"] == "Task")
+		self.assertEqual(brief["business_name"], "Loop Coffee")
+		self.assertEqual(task["backend_ref"], "RP-BRIEF-9")
+		self.assertEqual(task["execution_mode"], "milestone")  # a person's, never an agent's
+		self.assertEqual(task["dispatchable"], 0)
+		self.assertIn("Loop Coffee", task["title"])
+		self.assertIn("[rp:RP-BRIEF-9]", task["description"])
+		assign.assert_called_once()
+		warroom.assert_called_once()
+
+	@patch(f"{_S}._warroom")
+	@patch(f"{_S}._assign_to_cd")
+	@patch(f"{_S}.frappe")
+	def test_a_replay_adds_nothing_to_the_desk(self, mock_frappe, assign, warroom):
+		mock_frappe.db.get_value.return_value = "BB-0007"  # brief already ingested
+		mock_frappe.db.exists.return_value = True          # task already on the desk
+
+		randompack.handle_brief_submitted(
+			{"brief": "RP-BRIEF-9", "company_name": "Loop Coffee", "brief_snapshot": self._SNAPSHOT},
+			self._event())
+
+		task_inserts = [c for c in mock_frappe.get_doc.call_args_list
+						if c[0] and isinstance(c[0][0], dict) and c[0][0].get("doctype") == "Task"]
+		self.assertEqual(task_inserts, [])
+		assign.assert_not_called()
+
+	@patch(f"{_S}.frappe")
+	def test_no_brief_id_is_a_noop(self, mock_frappe):
+		randompack.handle_brief_submitted({"company_name": "Nobody"}, self._event())
+		mock_frappe.get_doc.assert_not_called()
+
+	def test_the_handler_is_registered(self):
+		self.assertIs(randompack.HANDLERS["brief.submitted"], randompack.handle_brief_submitted)
+
+	def test_the_summary_reads_like_a_brief_not_json(self):
+		text = randompack._brief_summary(self._SNAPSHOT, "RP-BRIEF-9")
+		self.assertIn("Company: Loop Coffee", text)
+		self.assertIn("Personality: warm, honest", text)
+		self.assertNotIn("{", text)

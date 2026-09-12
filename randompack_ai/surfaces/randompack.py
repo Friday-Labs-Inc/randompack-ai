@@ -59,6 +59,7 @@ def receive_event():
 # Their brief field → our Brand Brief field. Unknown keys fall through to
 # `notes` so nothing in the frozen snapshot is ever silently lost.
 _BRIEF_FIELD_MAP = {
+	# The older wire vocabulary, kept so recorded events still replay.
 	"company": "business_name",
 	"industry": "industry",
 	"audience": "target_audience",
@@ -67,6 +68,16 @@ _BRIEF_FIELD_MAP = {
 	"references": "inspirations",
 	"brands_admired": "color_preferences",  # admired/avoid both land in prefs
 	"brands_avoid": "competitors",
+	# RandomPack's snapshot is its Onboarding Brief as a dict, so the keys are
+	# that doctype's own fieldnames. Without these every Brand Brief the CD saw
+	# was titled "RandomPack RP-BRIEF-…" with the company in the unmapped notes.
+	"company_name": "business_name",
+	"category": "industry",
+	"what_you_do": "what_they_do",
+	"target_audience": "target_audience",
+	"personality": "brand_personality",
+	"competitors": "competitors",
+	"color_preferences": "color_preferences",
 }
 
 
@@ -94,7 +105,10 @@ def _ingest_brief(rp_brief: str, snapshot: dict) -> str:
 			leftovers[key] = value
 			continue
 		if isinstance(value, list):
-			value = ", ".join(str(v) for v in value)
+			value = ", ".join(
+				(v.get("url") or v.get("note") or v.get("file") or "") if isinstance(v, dict) else str(v)
+				for v in value
+			).strip(", ")
 		if doc_fields.get(target):
 			doc_fields[target] = (
 				f"{doc_fields[target]}\nAvoid: {value}"
@@ -124,6 +138,100 @@ def handle_payment_received(data: dict, event) -> None:
 	rp_brief = str(data.get("brief") or "")
 	if snapshot and rp_brief:
 		_ingest_brief(rp_brief, snapshot)
+
+
+def _brief_summary(snapshot: dict, rp_brief: str) -> str:
+	"""The brief as a person would read it on a desk — not a JSON dump."""
+	if isinstance(snapshot, str):
+		try:
+			snapshot = json.loads(snapshot)
+		except (ValueError, TypeError):
+			snapshot = {}
+	snapshot = snapshot or {}
+	lines = []
+	for label, key in (
+		("Company", "company_name"), ("Contact", "full_name"), ("What they do", "what_you_do"),
+		("Differentiator", "differentiator"), ("Audience", "target_audience"),
+		("Stage", "stage"), ("Preferred start", "preferred_start"),
+	):
+		value = snapshot.get(key)
+		if value:
+			lines.append(f"{label}: {value}")
+	personality = snapshot.get("personality")
+	if isinstance(personality, list) and personality:
+		lines.append("Personality: " + ", ".join(str(p) for p in personality))
+	lines.append(f"[rp:{rp_brief}]")
+	return "\n".join(lines)
+
+
+def _assign_to_cd(task_name: str, summary: str) -> None:
+	"""Put the task on every human Creative Director's desk. Best-effort: a
+	studio with the role unassigned still gets the task, just unowned."""
+	from randompack_ai.domains.randompack_brand import CD_ROLE
+
+	try:
+		users = frappe.get_all("Has Role", filters={"role": CD_ROLE, "parenttype": "User"}, pluck="parent")
+		users = [u for u in users if u not in ("Administrator", "Guest")]
+		if not users:
+			return
+		from frappe.desk.form import assign_to
+
+		assign_to.add({"assign_to": users, "doctype": "Task", "name": task_name,
+					   "description": summary[:140]})
+	except Exception:
+		frappe.log_error(title="friday.randompack _assign_to_cd failed")
+
+
+def handle_brief_submitted(data: dict, event) -> None:
+	"""brief.submitted → the Creative Director sees the brief when the
+	conversation ends, not when money lands.
+
+	Until this handler existed the event was received and recorded and nothing
+	happened: the Brand Brief was only built inside payment.received. So a
+	studio learned of an enquiry from a list view, and the person responsible
+	for judging it learned of it last.
+
+	Three things, all idempotent by the RandomPack brief id:
+	  * the Brand Brief, from the snapshot the event now carries (no pipeline
+	    is started — that is still payment's job);
+	  * the local Friday Project, so the task carries the engagement;
+	  * one Task on the CD's desk, human-owned, never dispatched to an agent.
+	"""
+	rp_brief = str(data.get("brief") or "")
+	if not rp_brief:
+		return
+	snapshot = data.get("brief_snapshot") or {}
+	rp_project = str(data.get("project") or "")
+	company = str(data.get("company_name") or data.get("company") or "").strip()
+
+	brief = _ingest_brief(rp_brief, snapshot)
+	if rp_project and frappe.db.get_value("Brand Brief", brief, "rp_project") != rp_project:
+		frappe.db.set_value("Brand Brief", brief, "rp_project", rp_project)
+
+	project = None
+	if rp_project:
+		project = _ensure_friday_project(rp_project, rp_brief, company or None)
+		if project and not frappe.db.get_value("Brand Brief", brief, "project"):
+			frappe.db.set_value("Brand Brief", brief, "project", project)
+
+	if frappe.db.exists("Task", {"backend_ref": rp_brief}):
+		return  # a replay; the desk already has it
+
+	summary = _brief_summary(snapshot, rp_brief)
+	task = frappe.get_doc({
+		"doctype": "Task",
+		"title": f"Review brief — {company or rp_brief}",
+		"description": summary,
+		"project": project,
+		"backend_ref": rp_brief,
+		"workflow_state": "Pending",
+		# A person's task. `milestone` is the mode the engine never dispatches.
+		"execution_mode": "milestone",
+		"dispatchable": 0,
+		"priority": "normal",
+	}).insert(ignore_permissions=True)
+	_assign_to_cd(task.name, summary)
+	_warroom(f"New brief from {company or rp_brief} — on the Creative Director's desk.")
 
 
 # ---------------------------------------------------------------------------
@@ -414,6 +522,7 @@ def _remember(memory: str, subject: str) -> None:
 
 
 HANDLERS = {
+	"brief.submitted": handle_brief_submitted,
 	"payment.received": handle_payment_received,
 	"project.created": handle_project_created,
 	"gate.decided": handle_gate_decided,

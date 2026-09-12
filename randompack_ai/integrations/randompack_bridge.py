@@ -34,38 +34,41 @@ import json
 import frappe
 from randompack_ai.integrations import randompack_client as client
 
-# gate-prep phase → the gate label RandomPack's request_gate_open expects.
-_GATE_PREP = {"gate1_prep": "Gate 1", "gate2_prep": "Gate 2"}
+# The gate a gate-prep phase opens is NOT named here any more.
+#
+# RandomPack used to schedule from a fixed ten-day template whose tasks were
+# called "Gate 1 — choose direction" and "Gate 2 — final review". It now
+# schedules from the accepted proposal, so a gate is called whatever the studio
+# quoted — "Sitemap sign-off", "Choose a direction" — and there may be three of
+# them. Matching by a remembered name found nothing, and because this bridge
+# never raises, the failure was silent: the pipeline ran, and the client's gate
+# never opened.
+#
+# So a gate-prep phase opens THE NEXT UNDECIDED GATE, whatever it is called.
+# That is true for two gates, for three, and for a shape nobody has sold yet.
 
-# gate-prep phase → the RP GATE TASK's subject. E2E finding #13: on RandomPack a
-# gate only actually OPENS (client card renders, gate.opened fires, the advisor's
-# action passes validation) when its Task flips to status="Working" —
-# request_gate_open alone is signal-only (a comment). The bridge now flips the
-# gate task itself, which the E2E had to do by hand at both gates.
-_GATE_TASK_SUBJECT = {"gate1_prep": "Gate 1 — choose direction", "gate2_prep": "Gate 2 — final review"}
-
-# gate-prep phase → the presentation file that gate reviews. E2E finding #6: the
+# gate-prep phase → the presentation that gate reviews. E2E finding #6: the
 # client's gate opened over an EMPTY portal because the presentation only lived
-# on Friday's bench. The bridge now pushes it (branded, human-named,
-# customer-facing) BEFORE opening the gate.
+# on Friday's bench. The bridge pushes it (branded, human-named, customer-facing)
+# BEFORE opening the gate.
 _GATE_DOC_PREFIX = {"gate1_prep": "gate1-client-presentation", "gate2_prep": "gate2-final-review"}
-_GATE_DOC_TITLE = {"gate1_prep": "Direction Presentation (Gate 1)", "gate2_prep": "Final Review (Gate 2)"}
+_GATE_DOC_TITLE = {"gate1_prep": "Direction Presentation", "gate2_prep": "Final Review"}
+_GATE_PREP_PHASES = ("gate1_prep", "gate2_prep")
 
-# Friday phase_key → RandomPack template-task SUBJECT (the stable display string
-# in the 'Essentials — 10 Day' template). RandomPack owns the docnames; we match
-# by subject. `naming` shares the strategy task; Intake/Delivery have no phase.
-# E2E finding #13 (second half): the Design-95 machine renamed the build phase to
-# `production` — the map spoke only the OLD vocabulary, so RP's "Build system"
-# task never advanced. Both vocabularies are mapped (buildout = legacy briefs).
+# Friday phase_key → the RandomPack task subject, newest vocabulary first.
+#
+# RandomPack's steps are the product's one invariant — Brief, Strategy,
+# Directions, Production, Delivery, in that order, on every engagement — so they
+# are what a phase maps to. The second entry in each tuple is the retired
+# template's name, kept so briefs already in flight against an old project still
+# write back.
 _SUBJECT_MAP = {
-	"strategy": "Strategy & naming",
-	"naming": "Strategy & naming",
-	"directions": "Three directions",
-	"gate1_prep": "Gate 1 — choose direction",
-	"production": "Build system",
-	"buildout": "Build system",
-	"gate2_prep": "Gate 2 — final review",
-	"guidelines": "Delivery & handoff",
+	"strategy": ("Strategy", "Strategy & naming"),
+	"naming": ("Strategy", "Strategy & naming"),
+	"directions": ("Directions", "Three directions"),
+	"production": ("Production", "Build system"),
+	"buildout": ("Production", "Build system"),
+	"guidelines": ("Delivery", "Delivery & handoff"),
 }
 
 # Phase after which Friday pushes the brief's attached files as deliverables.
@@ -125,37 +128,58 @@ def _engine_writeback(task, state: str) -> None:
 		summary = _result_summary(task)
 		if summary:
 			client.post_project_note(rp_project, note=f"[{phase}] {summary[:2000]}", task_ref=rp_task)
-		gate = _GATE_PREP.get(phase)
-		if gate:
+		if phase in _GATE_PREP_PHASES:
 			# E2E findings #6 + #13, in order: the client must have the document
 			# BEFORE the gate opens, and the gate only opens when its RP task
 			# flips to Working (request_gate_open is signal-only).
-			_push_gate_presentation(rp_project, brief_name, phase)
-			client.request_gate_open(
-				rp_project, gate=gate, summary=f"{task.get('title') or phase} is ready for client review."
-			)
-			gate_task = _resolve_rp_task_by_subject(rp_project, _GATE_TASK_SUBJECT.get(phase))
+			gate_task = _next_undecided_gate(rp_project)
 			if gate_task:
-				client.update_task_progress(gate_task, status="Working")
+				_push_gate_presentation(rp_project, brief_name, phase)
+				client.request_gate_open(
+					rp_project,
+					gate=gate_task["subject"],
+					summary=f"{task.get('title') or phase} is ready for client review.",
+				)
+				client.update_task_progress(gate_task["name"], status="Working")
 		# Design 77: _push_deliverables fires from on_brief_state_change when the
 		# brief reaches Delivered, NOT here, so the project-level materialize
 		# package (assemble_project_package) has time to land first.
 
 
-def _resolve_rp_task(rp_project: str, phase: str) -> str | None:
-	"""Map our phase to the backend's real Task docname by matching subjects from
-	get_project. Returns None if no match (write-back degrades to a project note)."""
-	return _resolve_rp_task_by_subject(rp_project, _SUBJECT_MAP.get(phase))
-
-
-def _resolve_rp_task_by_subject(rp_project: str, subject: "str | None") -> str | None:
-	if not subject:
-		return None
+def _rp_tasks(rp_project: str) -> list[dict]:
 	state = client.get_project_state(rp_project) or {}
-	tasks = (state.get("message") or state).get("tasks") or []
-	for t in tasks:
-		if (t.get("subject") or "") == subject:
-			return t.get("name")
+	return (state.get("message") or state).get("tasks") or []
+
+
+def _resolve_rp_task(rp_project: str, phase: str) -> str | None:
+	"""Map our phase to the backend's real Task docname.
+
+	Tries the proposal's step name first, then the retired template's, so a
+	brief in flight against an old project still writes back. Returns None if
+	neither matches — write-back then degrades to a project note.
+	"""
+	candidates = _SUBJECT_MAP.get(phase) or ()
+	tasks = _rp_tasks(rp_project)
+	for subject in candidates:
+		for t in tasks:
+			if (t.get("subject") or "") == subject and not t.get("is_gate"):
+				return t.get("name")
+	return None
+
+
+def _next_undecided_gate(rp_project: str) -> dict | None:
+	"""The next client gate that has not been decided, in running order.
+
+	Identity by POSITION in the chain rather than by a remembered name: the
+	studio names its own gates on the proposal, and there may be any number of
+	them. A gate already Completed has been decided; the one after it is next.
+	"""
+	for t in _rp_tasks(rp_project):
+		if not t.get("is_gate"):
+			continue
+		if (t.get("status") or "") in ("Completed", "Cancelled"):
+			continue
+		return {"name": t.get("name"), "subject": t.get("subject") or ""}
 	return None
 
 
@@ -289,8 +313,10 @@ def _legacy_writeback(task, state: str) -> None:
 			client.post_project_note(
 				project_ref, note=f"[{phase}] completed:\n{summary[:2000]}", task_ref=task_ref
 			)
-		gate = _GATE_PREP.get(phase)
+		# project_ref is RandomPack's project; task.project is Friday's own.
+		gate = _next_undecided_gate(project_ref) if phase in _GATE_PREP_PHASES else None
 		if gate:
+			gate = gate["subject"]
 			client.request_gate_open(
 				project_ref, gate=gate, summary=f"{task.title} is ready for client review."
 			)

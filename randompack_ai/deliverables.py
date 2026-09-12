@@ -8,8 +8,11 @@ newest version of each prefix wins).
 CUSTOMER_TITLE_MAP: list[tuple[str, str]] = [
 	("brand-guidelines", "Brand Guidelines"),
 	("production-package", "Brand System — Production Package"),
-	("gate2-final-review", "Final Review (Gate 2)"),
-	("gate1-client-presentation", "Direction Presentation (Gate 1)"),
+	# No gate numbers in a client-facing title: a studio may quote three gates
+	# and name each one itself, so "(Gate 2)" is a claim about a shape the
+	# proposal no longer guarantees.
+	("gate2-final-review", "Final Review"),
+	("gate1-client-presentation", "Direction Presentation"),
 	("naming-candidates", "Naming Candidates"),
 	("strategy", "Brand Strategy"),
 ]

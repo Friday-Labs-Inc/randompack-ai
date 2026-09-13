@@ -157,19 +157,51 @@ class TestTheGateSlotsAndTheProposalDisagree(unittest.TestCase):
 
     @patch.object(bridge, "client")
     @patch.object(bridge, "frappe")
-    def test_a_prep_with_no_gate_left_says_so(self, fr, c):
-        """One gate quoted, two slots. The second prep finds nothing to open
-        and the brief would wait at a review state for a decision that cannot
-        be made."""
+    def test_every_gate_decided_leaves_the_cycle(self, fr, c):
+        """This is the only way the cycle ends. The machine does not know how
+        many gates an engagement has — it keeps returning to Gate Prep after
+        each round of production and stops when the backend says there is
+        nothing left to decide."""
         c.get_project_state.return_value = self._state([
             {"name": "T1", "subject": "Choose a direction", "is_gate": 1, "status": "Completed"},
         ])
-        with patch("randompack_ai.surfaces.randompack._warroom") as war:
-            bridge._gate_slot_mismatch("RP-1", "BB-1", "gate2_prep")
+        brief = MagicMock()
+        fr.get_doc.return_value = brief
+        with patch("frappe.model.workflow.apply_workflow") as apply, \
+                patch("frappe.friday_core.engine.governance.acting_as"):
+            bridge._leave_the_gate_cycle("RP-1", "BB-1", "gate_prep")
+
+        apply.assert_called_once()
+        self.assertEqual(apply.call_args[0][1], "No Gate Remaining")
+        c.post_project_note.assert_called_once()
+
+    @patch.object(bridge, "client")
+    @patch.object(bridge, "frappe")
+    def test_a_brief_on_the_old_machine_cannot_take_the_exit(self, fr, c):
+        """There is no No Gate Remaining transition out of Gate 1 Prep or
+        Gate 2 Prep, so a brief still finishing on the two-gate machine is told
+        loudly instead of being moved."""
+        with patch("randompack_ai.surfaces.randompack._warroom") as war, \
+                patch("frappe.model.workflow.apply_workflow") as apply:
+            bridge._leave_the_gate_cycle("RP-1", "BB-1", "gate2_prep")
+
+        apply.assert_not_called()
+        war.assert_called_once()
+        self.assertIn("retired two-gate machine", war.call_args[0][0])
+
+    @patch.object(bridge, "client")
+    @patch.object(bridge, "frappe")
+    def test_a_cycle_that_will_not_close_is_not_silent(self, fr, c):
+        """Silence is what made the two-gate mismatch expensive to find."""
+        brief = MagicMock()
+        fr.get_doc.return_value = brief
+        with patch("randompack_ai.surfaces.randompack._warroom") as war, \
+                patch("frappe.model.workflow.apply_workflow", side_effect=RuntimeError("no")), \
+                patch("frappe.friday_core.engine.governance.acting_as"):
+            bridge._leave_the_gate_cycle("RP-1", "BB-1", "gate_prep")
 
         war.assert_called_once()
-        self.assertIn("no gate left to open", war.call_args[0][0])
-        c.post_project_note.assert_called_once()
+        self.assertIn("stuck before delivery", war.call_args[0][0])
 
     @patch.object(bridge, "client")
     @patch.object(bridge, "frappe")

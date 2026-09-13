@@ -31,17 +31,20 @@ class TestDesign95MachineShape(unittest.TestCase):
 		# Naming hands off to the HUMAN's creative stage (not the old AI Directions).
 		self.assertEqual(_TRANSITIONS[("Naming", "Complete Naming")][0], "CD Creative")
 		# The human signals readiness; the client presentation is prepped from HIS files.
-		self.assertEqual(_TRANSITIONS[("CD Creative", "Creative Ready")], ("Gate 1 Prep", bundle.CD_ROLE))
-		# Gate 1 approval enters AI Production (not the old Buildout).
-		self.assertEqual(_TRANSITIONS[("Gate 1 Review", "Approve Direction")][0], "AI Production")
+		self.assertEqual(_TRANSITIONS[("CD Creative", "Creative Ready")], ("Gate Prep", bundle.CD_ROLE))
+		# A decided gate enters AI Production (not the old Buildout).
+		self.assertEqual(_TRANSITIONS[("Gate Review", "Approve Gate")][0], "AI Production")
 		# Production must pass the human CD before the client track.
 		self.assertEqual(
 			_TRANSITIONS[("AI Production", "Complete Production")][0], "CD Internal Gate"
 		)
 
 	def test_internal_gate_has_approve_and_refine_loop(self):
+		# Approval goes back to Gate Prep, not on to a second numbered gate: how
+		# many times an engagement goes in front of the client is the proposal's
+		# business, not this machine's.
 		self.assertEqual(
-			_TRANSITIONS[("CD Internal Gate", "Approve Production")], ("Gate 2 Prep", bundle.CD_ROLE)
+			_TRANSITIONS[("CD Internal Gate", "Approve Production")], ("Gate Prep", bundle.CD_ROLE)
 		)
 		self.assertEqual(
 			_TRANSITIONS[("CD Internal Gate", "Request Refinement")], ("AI Production", bundle.CD_ROLE)
@@ -77,10 +80,19 @@ class TestDesign95MachineShape(unittest.TestCase):
 		# In-flight briefs at the old states must stay valid and able to finish.
 		for state in ("Directions", "Buildout"):
 			self.assertIn(state, _STATES)
-		self.assertEqual(_TRANSITIONS[("Directions", "Complete Directions")][0], "Gate 1 Prep")
-		self.assertEqual(_TRANSITIONS[("Buildout", "Complete Buildout")][0], "Gate 2 Prep")
+		self.assertEqual(_TRANSITIONS[("Directions", "Complete Directions")][0], "Gate Prep")
+		self.assertEqual(_TRANSITIONS[("Buildout", "Complete Buildout")][0], "Gate Prep")
 		self.assertIn("directions", _PHASES)
 		self.assertIn("buildout", _PHASES)
+
+		# The two-gate machine's own states, kept for the same reason: a brief
+		# sitting at Gate 1 Review when this shipped must still be able to finish.
+		for state in ("Gate 1 Prep", "Gate 1 Review", "Gate 2 Prep", "Gate 2 Review"):
+			self.assertIn(state, _STATES)
+		self.assertEqual(_TRANSITIONS[("Gate 1 Review", "Approve Direction")][0], "AI Production")
+		self.assertEqual(_TRANSITIONS[("Gate 2 Review", "Final Approval")][0], "Guidelines")
+		self.assertIn("gate1_prep", _PHASES)
+		self.assertIn("gate2_prep", _PHASES)
 
 	def test_sequential_only_invariant_holds(self):
 		# Design 75 §8: at most ONE agentic transition per state (the engine takes
@@ -98,3 +110,42 @@ class TestDesign95MachineShape(unittest.TestCase):
 
 if __name__ == "__main__":
 	unittest.main()
+
+
+class TestTheGateCycleTakesAnyNumberOfGates(unittest.TestCase):
+	"""There used to be two client gates, because the ten-day package had two
+	client decisions. A studio names its own gates now and may quote one or
+	five, so the gate is a cycle the pipeline re-enters, not a pair of
+	stations it passes through once each."""
+
+	def test_there_is_one_gate_prep_and_one_gate_review(self):
+		self.assertIn("Gate Prep", _STATES)
+		self.assertIn("Gate Review", _STATES)
+
+	def test_the_cycle_closes(self):
+		"""Prep → Review → production → the CD → prep again. Without the last
+		edge the pipeline could only ever put one decision to the client."""
+		self.assertEqual(_TRANSITIONS[("Gate Prep", "Complete Gate Prep")][0], "Gate Review")
+		self.assertEqual(_TRANSITIONS[("Gate Review", "Approve Gate")][0], "AI Production")
+		self.assertEqual(_TRANSITIONS[("AI Production", "Complete Production")][0], "CD Internal Gate")
+		self.assertEqual(_TRANSITIONS[("CD Internal Gate", "Approve Production")][0], "Gate Prep")
+
+	def test_the_cycle_has_an_exit_from_both_of_its_states(self):
+		"""The bridge fires this when the backend reports no undecided gate
+		left. Whether the engine's auto-advance has already carried the brief
+		from Gate Prep to Gate Review by then is a race, so an exit that worked
+		from only one of them would strand the engagement half the time."""
+		self.assertEqual(_TRANSITIONS[("Gate Prep", "No Gate Remaining")][0], "Guidelines")
+		self.assertEqual(_TRANSITIONS[("Gate Review", "No Gate Remaining")][0], "Guidelines")
+
+	def test_one_prep_phase_serves_every_gate(self):
+		self.assertIn("gate_prep", _PHASES)
+		self.assertEqual(_PHASES["gate_prep"]["from_state"], "Gate Prep")
+		self.assertEqual(_PHASES["gate_prep"]["action"], "Complete Gate Prep")
+
+	def test_no_new_brief_can_reach_a_numbered_gate(self):
+		"""The old states survive for briefs in flight, but nothing leads into
+		them any more — that is what makes them legacy rather than alive."""
+		reachable = {nxt for (_frm, _a), (nxt, _r) in _TRANSITIONS.items()}
+		for dead in ("Gate 1 Prep", "Gate 2 Prep"):
+			self.assertNotIn(dead, reachable, f"{dead} is still reachable")

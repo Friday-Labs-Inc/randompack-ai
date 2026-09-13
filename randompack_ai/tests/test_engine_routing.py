@@ -114,7 +114,7 @@ class TestEngineRouting(unittest.TestCase):
 		from frappe.model.workflow import apply_workflow
 
 		brief = _new_brief()
-		# Walk to Gate 1 Review. "directions" is not on this path any more: the
+		# Walk to Gate Review. "directions" is not on this path any more: the
 		# human Creative Director owns that stage now, as "CD Creative", and a
 		# human state has no agentic phase for the engine to dispatch — so the
 		# walk has to fire his transition by hand, which is the point of the
@@ -132,12 +132,12 @@ class TestEngineRouting(unittest.TestCase):
 		)
 		apply_workflow(brief, "Creative Ready")
 
-		for pk in ["gate1_prep"]:
+		for pk in ["gate_prep"]:
 			task = _task_for(brief.name, pk)
 			self.assertIsNotNone(task, f"expected a dispatched task for {pk}")
 			_complete(task.name)
 		brief.reload()
-		self.assertEqual(brief.workflow_state, "Gate 1 Review")
+		self.assertEqual(brief.workflow_state, "Gate Review")
 		# A gate is a human transition — the engine must NOT create an agent task.
 		gate_tasks = frappe.get_all(
 			"Task",
@@ -153,20 +153,20 @@ class TestEngineRouting(unittest.TestCase):
 		wf = bundle.WORKFLOW_NAME
 		# Strategy has an agentic outgoing transition.
 		self.assertIsNotNone(workflow_engine._agentic_meta_for_state(wf, "Strategy"))
-		# Gate 1 Review's only outgoing transition is the human gate -> None.
-		self.assertIsNone(workflow_engine._agentic_meta_for_state(wf, "Gate 1 Review"))
+		# Gate Review's only agentic transition is none: the client owns it.
+		self.assertIsNone(workflow_engine._agentic_meta_for_state(wf, "Gate Review"))
 
 	def test_announces_pause_at_human_gate(self):
-		"""When the brief enters Gate 1 Review (a human-owned transition state),
+		"""When the brief enters Gate Review (a human-owned transition state),
 		the war room gets a 'waiting for the human' message — enqueued after
 		commit so it isn't rolled back with the engine save's transaction."""
 		doc = frappe._dict(name="BB-TEST", business_name="Test Co", rp_project="PROJ-X")
 		with patch("frappe.enqueue") as mock_enqueue:
-			workflow_engine._announce_human_pause(doc, bundle.WORKFLOW_NAME, "Gate 1 Review")
+			workflow_engine._announce_human_pause(doc, bundle.WORKFLOW_NAME, "Gate Review")
 		self.assertTrue(mock_enqueue.called, "war room post must be enqueued")
 		kwargs = mock_enqueue.call_args.kwargs
 		text = kwargs.get("text", "")
-		self.assertIn("Gate 1 Review", text)
+		self.assertIn("Gate Review", text)
 		self.assertIn("BB-TEST", text)
 		self.assertIn("waiting", text.lower())
 		self.assertTrue(kwargs.get("enqueue_after_commit"))
@@ -177,3 +177,66 @@ class TestEngineRouting(unittest.TestCase):
 		with patch("frappe.enqueue") as mock_enqueue:
 			workflow_engine._announce_human_pause(doc, bundle.WORKFLOW_NAME, "Delivered")
 		mock_enqueue.assert_not_called()
+
+
+class TestTheGateCycleActuallyLoops(unittest.TestCase):
+	"""The transition table says the cycle closes. This walks it.
+
+	A table can be right while the machine still only ever puts one decision to
+	the client — the engine has to dispatch the prep phase a second time, into
+	the same state, for a second gate to happen at all.
+	"""
+
+	@classmethod
+	def setUpClass(cls):
+		frappe.db.rollback()
+		bundle.provision()
+		cls._runner = patch(
+			"frappe.friday_core.tasks.runner.on_agent_task_assigned", lambda **kw: None
+		)
+		cls._runner.start()
+
+	@classmethod
+	def tearDownClass(cls):
+		cls._runner.stop()
+		frappe.db.rollback()
+
+	def tearDown(self):
+		frappe.set_user("Administrator")
+		frappe.db.rollback()
+
+	def test_a_second_gate_gets_its_own_prep_task(self):
+		from frappe.model.workflow import apply_workflow
+
+		brief = _new_brief()
+		for pk in ("strategy", "naming"):
+			_complete(_task_for(brief.name, pk)["name"])
+		brief.reload()
+		apply_workflow(brief, "Creative Ready")
+
+		# First gate.
+		first = _task_for(brief.name, "gate_prep")
+		self.assertIsNotNone(first, "entering Gate Prep should dispatch the prep phase")
+		_complete(first["name"])
+		brief.reload()
+		self.assertEqual(brief.workflow_state, "Gate Review")
+
+		# The client decides; production runs; the CD approves it.
+		apply_workflow(brief, "Approve Gate")
+		brief.reload()
+		self.assertEqual(brief.workflow_state, "AI Production")
+		_complete(_task_for(brief.name, "production")["name"])
+		brief.reload()
+		self.assertEqual(brief.workflow_state, "CD Internal Gate")
+		apply_workflow(brief, "Approve Production")
+
+		# Back at Gate Prep, with a NEW prep task for the second decision. On
+		# the two-gate machine this was a different state and a different phase;
+		# here it is the same one, entered again.
+		brief.reload()
+		self.assertEqual(brief.workflow_state, "Gate Prep")
+		second = _task_for(brief.name, "gate_prep")
+		self.assertIsNotNone(second, "the second gate needs its own prep task")
+		self.assertNotEqual(
+			second["name"], first["name"], "the second gate reused the first gate's task"
+		)

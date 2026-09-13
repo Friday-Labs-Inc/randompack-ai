@@ -51,9 +51,25 @@ from randompack_ai.integrations import randompack_client as client
 # client's gate opened over an EMPTY portal because the presentation only lived
 # on Friday's bench. The bridge pushes it (branded, human-named, customer-facing)
 # BEFORE opening the gate.
-_GATE_DOC_PREFIX = {"gate1_prep": "gate1-client-presentation", "gate2_prep": "gate2-final-review"}
+#
+# The generic phase writes one prefix for every gate; the two numbered ones are
+# the retired machine, kept while briefs are still in flight on it. A document's
+# TITLE is the gate's own label, taken from the gate being opened rather than
+# from a slot number — the client sees "Choose a direction", which is what they
+# agreed to on the proposal, not "Gate 1".
+_GATE_DOC_PREFIX = {
+	"gate_prep": "gate-presentation",
+	"gate1_prep": "gate1-client-presentation",
+	"gate2_prep": "gate2-final-review",
+}
 _GATE_DOC_TITLE = {"gate1_prep": "Direction Presentation", "gate2_prep": "Final Review"}
-_GATE_PREP_PHASES = ("gate1_prep", "gate2_prep")
+_GATE_PREP_PHASES = ("gate_prep", "gate1_prep", "gate2_prep")
+
+# The transition that leaves the gate cycle, fired when the backend reports no
+# undecided gate left. Valid from Gate Prep and from Gate Review, because which
+# of the two the brief has reached by the time we look is a race with the
+# engine's own auto-advance.
+_NO_GATE_REMAINING = "No Gate Remaining"
 
 # Friday phase_key → the RandomPack task subject, newest vocabulary first.
 #
@@ -134,7 +150,7 @@ def _engine_writeback(task, state: str) -> None:
 			# flips to Working (request_gate_open is signal-only).
 			gate_task = _next_undecided_gate(rp_project)
 			if gate_task:
-				_push_gate_presentation(rp_project, brief_name, phase)
+				_push_gate_presentation(rp_project, brief_name, phase, gate_task["subject"])
 				client.request_gate_open(
 					rp_project,
 					gate=gate_task["subject"],
@@ -142,7 +158,7 @@ def _engine_writeback(task, state: str) -> None:
 				)
 				client.update_task_progress(gate_task["name"], status="Working")
 			else:
-				_gate_slot_mismatch(rp_project, brief_name, phase)
+				_leave_the_gate_cycle(rp_project, brief_name, phase)
 		# Design 77: _push_deliverables fires from on_brief_state_change when the
 		# brief reaches Delivered, NOT here, so the project-level materialize
 		# package (assemble_project_package) has time to land first.
@@ -194,49 +210,72 @@ def undecided_gates(rp_project: str) -> list[dict]:
 	]
 
 
-def _gate_slot_mismatch(rp_project: str, brief_name: str, phase: str) -> None:
-	"""The pipeline reached a gate slot and the proposal has no gate for it.
+def _leave_the_gate_cycle(rp_project: str, brief_name: str, phase: str) -> None:
+	"""Every gate the proposal named has been decided — go on to delivery.
 
-	The pipeline has exactly two client-gate slots; a proposal may name any
-	number. One gate and the second slot has nothing to open — and the brief
-	then waits at that gate's review state for a decision that can never be
-	made. Nothing raises, nothing is logged, and the engagement simply stops.
+	This is how the cycle ends, and the only way it ends. The machine has no
+	idea how many gates an engagement has; it keeps coming back to Gate Prep
+	after every round of production, and stops when the backend says there is
+	nothing left to decide.
 
-	Until the gate cycle is reentrant this cannot be fixed here, but it can
-	stop being silent: a human is told, in the two places a human looks.
+	A brief still in flight on the retired two-gate machine cannot take this
+	exit — there is no such transition from Gate 1 Prep or Gate 2 Prep — so it
+	is told loudly instead, and a human moves it.
 	"""
 	from randompack_ai.surfaces.randompack import _warroom
 
-	message = (
-		f"**[{rp_project}]** {phase} finished but the proposal has no gate left to open. "
-		"The brief is about to wait at a client gate that will never be decided — "
-		"move it forward from the desk, or add the gate to the proposal."
-	)
+	if phase != "gate_prep":
+		try:
+			_warroom(
+				f"**[{rp_project}]** {phase} finished and the proposal has no gate left "
+				"to open. This brief is on the retired two-gate machine, which has no "
+				"exit from here — move it forward from the desk."
+			)
+		except Exception:
+			frappe.log_error(title="legacy gate stall could not reach the war room")
+		return
+
+	from frappe.friday_core.engine.governance import acting_as
+	from frappe.model.workflow import apply_workflow
+
 	try:
-		_warroom(message)
+		brief = frappe.get_doc("Brand Brief", brief_name)
+		with acting_as("Administrator"):
+			apply_workflow(brief, _NO_GATE_REMAINING)
 	except Exception:
-		frappe.log_error(title="gate slot mismatch could not reach the war room")
+		# The pipeline stopping here would be silent otherwise, and silence is
+		# what made the two-gate mismatch so expensive to find.
+		frappe.log_error(title="friday.randompack could not leave the gate cycle")
+		try:
+			_warroom(
+				f"**[{rp_project}]** every gate is decided but the brief would not "
+				f"leave the gate cycle. It is stuck before delivery."
+			)
+		except Exception:
+			pass
+		return
+
 	try:
 		client.post_project_note(
 			rp_project,
-			note=(
-				"The pipeline expected another client decision here and the proposal "
-				"does not have one. Waiting for a human."
-			),
+			note="Every decision on this engagement has been made. Moving to delivery.",
 		)
 	except Exception:
 		pass
 
 
 def warn_if_gates_remain(rp_project: str, just_decided: str = "") -> None:
-	"""Called as the pipeline leaves its last gate. The other half of the same
-	mismatch: three gates quoted, two slots to open them in, so the third is
-	never put to the client and the engagement delivers without it.
+	"""A brief on the retired two-gate machine has just taken its final gate.
+
+	Three gates quoted and two slots to open them in: the third is never put to
+	the client and the engagement delivers without it. The reentrant cycle makes
+	this impossible, so this only fires for briefs still finishing on the old
+	machine — which is exactly when nobody would otherwise notice.
 
 	`just_decided` is excluded. This runs while handling that gate's own
 	decision, and whether RandomPack has already flipped its task to Completed
-	is a race — without this the warning's commonest firing would be about the
-	gate the client just decided.
+	is a race — without the exclusion the warning's commonest firing would be
+	about the gate the client had this second decided.
 	"""
 	from randompack_ai.surfaces.randompack import _warroom
 
@@ -254,7 +293,8 @@ def warn_if_gates_remain(rp_project: str, just_decided: str = "") -> None:
 		frappe.log_error(title="unopened gates could not reach the war room")
 
 
-def _push_gate_presentation(rp_project: str, brief_name: str, phase: str) -> None:
+def _push_gate_presentation(rp_project: str, brief_name: str, phase: str,
+							gate_label: str = "") -> None:
 	"""Push the gate's review document to RP as a branded, human-named PDF —
 	BEFORE the gate opens (E2E finding #6). Best-effort: a render/push hiccup
 	must not block the gate-open signal; the operator can re-push."""
@@ -286,7 +326,9 @@ def _push_gate_presentation(rp_project: str, brief_name: str, phase: str) -> Non
 
 	ctx = materialize._work_item_context_for("Brand Brief", brief_name, project)
 	company = ctx.get("company") or ""
-	title = _GATE_DOC_TITLE.get(phase, "Gate Review")
+	# The gate's own name, as the studio wrote it on the proposal and as the
+	# client agreed to it. Only the retired numbered phases fall back to a map.
+	title = gate_label or _GATE_DOC_TITLE.get(phase, "Client Review")
 	display = f"{company} — {title}" if company else title
 	pdf = materialize._render_pdf(display, content, brand_context=ctx)
 	payload = pdf if pdf else content.encode("utf-8")
@@ -393,7 +435,7 @@ def _legacy_writeback(task, state: str) -> None:
 					summary=f"{task.title} is ready for client review.",
 				)
 			else:
-				_gate_slot_mismatch(project_ref, task.get("work_item_name") or "", phase)
+				_leave_the_gate_cycle(project_ref, task.get("work_item_name") or "", phase)
 
 
 def _result_summary(task) -> str:

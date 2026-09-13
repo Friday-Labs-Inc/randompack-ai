@@ -143,20 +143,30 @@ STATES: list[tuple[str, str]] = [
 	# options (logo concepts + design system) and uploads them to the Project.
 	# No agentic phase; the engine waits for his "Creative Ready" transition.
 	("CD Creative", CD_ROLE),
-	("Gate 1 Prep", "Brand Strategist"),
-	("Gate 1 Review", GATE_ROLE),
+	# ONE client gate, entered once per gate the proposal named.
+	#
+	# There used to be two of each of these, Gate 1 and Gate 2, because the
+	# ten-day package had exactly two client decisions. A studio names its own
+	# gates now and may quote one or five, and a pipeline with two slots breaks
+	# on either side of two: with one gate it waits forever at a review that can
+	# never be decided, with three it delivers without ever asking about the
+	# third. So the gate is a cycle, not a pair of stations.
+	("Gate Prep", "Brand Strategist"),
+	("Gate Review", GATE_ROLE),
 	# Design 95 — the AI applies the human's chosen system across the
 	# deliverable set (the apprentice's production stage; replaces Buildout).
 	("AI Production", "Creative Director"),
 	# Design 95 — the human CD's internal QA gate: approve forwards the work;
 	# refine loops it back to AI Production. Nothing reaches the client uninspected.
 	("CD Internal Gate", CD_ROLE),
-	("Gate 2 Prep", "Brand Strategist"),
-	("Gate 2 Review", GATE_ROLE),
 	("Guidelines", "Brand Copywriter"),
 	("Delivered", "System Manager"),
-	# LEGACY (pre-Design-95 machine) — kept ONLY so in-flight briefs already at
-	# these states remain valid and can finish; no new brief ever enters them.
+	# LEGACY — kept ONLY so in-flight briefs already at these states remain
+	# valid and can finish; no new brief ever enters them.
+	("Gate 1 Prep", "Brand Strategist"),
+	("Gate 1 Review", GATE_ROLE),
+	("Gate 2 Prep", "Brand Strategist"),
+	("Gate 2 Review", GATE_ROLE),
 	("Directions", "Creative Director"),
 	("Buildout", "Creative Director"),
 ]
@@ -171,19 +181,30 @@ TRANSITIONS: list[tuple[str, str, str, str]] = [
 	("Strategy", "Complete Strategy", "Naming", "Brand Strategist"),
 	("Naming", "Complete Naming", "CD Creative", "Brand Copywriter"),
 	# The human CD signals "my directions + design system are on the Project".
-	("CD Creative", "Creative Ready", "Gate 1 Prep", CD_ROLE),
-	("Gate 1 Prep", "Complete Gate 1 Prep", "Gate 1 Review", "Brand Strategist"),
-	("Gate 1 Review", "Approve Direction", "AI Production", GATE_ROLE),
+	("CD Creative", "Creative Ready", "Gate Prep", CD_ROLE),
+	("Gate Prep", "Complete Gate Prep", "Gate Review", "Brand Strategist"),
+	("Gate Review", "Approve Gate", "AI Production", GATE_ROLE),
 	("AI Production", "Complete Production", "CD Internal Gate", "Creative Director"),
-	# The internal gate: forward to the client track, or loop back for rework.
-	("CD Internal Gate", "Approve Production", "Gate 2 Prep", CD_ROLE),
+	# The internal gate: another round in front of the client, or rework first.
+	# Always back to Gate Prep — how many times that happens is the proposal's
+	# business, not this machine's.
+	("CD Internal Gate", "Approve Production", "Gate Prep", CD_ROLE),
 	("CD Internal Gate", "Request Refinement", "AI Production", CD_ROLE),
-	("Gate 2 Prep", "Complete Gate 2 Prep", "Gate 2 Review", "Brand Strategist"),
-	("Gate 2 Review", "Final Approval", "Guidelines", GATE_ROLE),
+	# The cycle's exit. Fired by the bridge when the backend reports no
+	# undecided gate left, and allowed from BOTH states on purpose: whether the
+	# engine's auto-advance has already carried the brief from Gate Prep to
+	# Gate Review by the time the bridge looks is a race, and an exit that only
+	# worked from one of them would strand the engagement half the time.
+	("Gate Prep", "No Gate Remaining", "Guidelines", "System Manager"),
+	("Gate Review", "No Gate Remaining", "Guidelines", "System Manager"),
 	("Guidelines", "Complete Guidelines", "Delivered", "Brand Copywriter"),
 	# LEGACY exits — let in-flight briefs finish the old machine, then rejoin.
-	("Directions", "Complete Directions", "Gate 1 Prep", "Creative Director"),
-	("Buildout", "Complete Buildout", "Gate 2 Prep", "Creative Director"),
+	("Gate 1 Prep", "Complete Gate 1 Prep", "Gate 1 Review", "Brand Strategist"),
+	("Gate 1 Review", "Approve Direction", "AI Production", GATE_ROLE),
+	("Gate 2 Prep", "Complete Gate 2 Prep", "Gate 2 Review", "Brand Strategist"),
+	("Gate 2 Review", "Final Approval", "Guidelines", GATE_ROLE),
+	("Directions", "Complete Directions", "Gate Prep", "Creative Director"),
+	("Buildout", "Complete Buildout", "Gate Prep", "Creative Director"),
 ]
 
 # Agentic transition metadata — one row per agent-owned transition. phase_key is
@@ -234,6 +255,53 @@ PHASES: list[dict] = [
 		),
 	},
 	{
+		# The client's next decision, whichever one it is.
+		#
+		# This replaced two phases that each knew which gate they were for —
+		# gate1_prep said "here are the directions, pick one" and gate2_prep
+		# said "here is what we built, approve it". Neither can be right when
+		# the studio names its own gates and may quote five, so the phase reads
+		# the project to find out what has happened since the last decision and
+		# assembles the case for the next one. It runs once per gate.
+		"phase_key": "gate_prep",
+		"from_state": "Gate Prep",
+		"action": "Complete Gate Prep",
+		"agent_role": "Brand Strategist",
+		"skills": [
+			"get-brand-brief",
+			"get-phase-outputs",
+			"list-project-files",
+			"get-project-file",
+			"attach-deliverable",
+		],
+		"prompt": (
+			"The client has a decision to make and you are assembling what they "
+			"need in order to make it. "
+			"FIRST call list-project-files with project_name=\"{{ project }}\" — "
+			"this returns each attached File as {name, file_name, ...}. Read the "
+			"ones that are new since the last client decision by calling "
+			"get-project-file with project_name=\"{{ project }}\" and file_name "
+			"set to EITHER the file's `name` (docname) OR its `file_name` (human "
+			"name); both work, do NOT invent a name. Early in an engagement those "
+			"will be the human Creative Director's direction options — logo "
+			"concepts and a design system. Later they will be the production "
+			"package. Whatever they are, they ARE the work: never invent or "
+			"restyle them. THEN call get-phase-outputs for the strategy, naming "
+			"and any earlier decisions for {{ business_name }}. "
+			"THEN write the client-facing case for this decision (brief "
+			"{{ name }}): what has been done since they last decided, what they "
+			"are being asked to choose between or approve, each option in a "
+			"client-friendly paragraph faithful to the files, and a recommendation "
+			"with your reasoning. After the summary, call attach-deliverable with "
+			"project_name=\"{{ project }}\" and file_name=\"gate-presentation.md\" "
+			"passing the full text as content — this is what the client opens when "
+			"the gate is put to them. Reply with the full presentation text."
+		),
+	},
+	{
+		# LEGACY — the two-gate machine. Kept so a brief already sitting at
+		# Gate 1 Prep or Gate 2 Prep still has a phase to run; no new brief
+		# reaches either state.
 		"phase_key": "gate1_prep",
 		"from_state": "Gate 1 Prep",
 		"action": "Complete Gate 1 Prep",

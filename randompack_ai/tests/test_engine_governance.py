@@ -58,13 +58,13 @@ def _cd_user() -> str:
 	return email
 
 
-# The Design 95 chain that drives a fresh brief to Gate 1 Review: the human CD's
+# The Design 95 chain that drives a fresh brief to Gate Review: the human CD's
 # "Creative Ready" replaced the old AI "Complete Directions".
 _TO_GATE1 = [
 	("Complete Strategy", "Brand Strategist"),
 	("Complete Naming", "Brand Copywriter"),
 	("Creative Ready", None),  # None → the human CD user, not an agent profile
-	("Complete Gate 1 Prep", "Brand Strategist"),
+	("Complete Gate Prep", "Brand Strategist"),
 ]
 
 
@@ -137,10 +137,10 @@ class TestEngineGovernance(unittest.TestCase):
 		brief = _new_brief()
 		_drive(brief, _TO_GATE1)
 		brief.reload()
-		self.assertEqual(brief.workflow_state, "Gate 1 Review")
+		self.assertEqual(brief.workflow_state, "Gate Review")
 		with self.assertRaises(Exception):
 			with acting_as(_user("Creative Director")):
-				apply_workflow(brief, "Approve Direction")
+				apply_workflow(brief, "Approve Gate")
 
 	def test_gateway_can_open_client_gate(self):
 		"""The gateway account (only the gate role) opens the gate — into the
@@ -149,7 +149,7 @@ class TestEngineGovernance(unittest.TestCase):
 		_drive(brief, _TO_GATE1)
 		brief.reload()
 		with acting_as(bundle.GATEWAY_USER):
-			apply_workflow(brief, "Approve Direction")
+			apply_workflow(brief, "Approve Gate")
 		brief.reload()
 		self.assertEqual(brief.workflow_state, "AI Production")
 
@@ -169,13 +169,13 @@ class TestEngineGovernance(unittest.TestCase):
 
 	def test_cd_internal_gate_approve_and_refine_loop(self):
 		"""The human CD's internal gate: the AI's production must pass HIM before
-		the client track — approve forwards to Gate 2 Prep, refine loops back to
+		the client track — approve returns to Gate Prep, refine loops back to
 		AI Production; and the AI agent can fire NEITHER decision."""
 		brief = _new_brief()
 		_drive(brief, _TO_GATE1)
 		brief.reload()
 		with acting_as(bundle.GATEWAY_USER):
-			apply_workflow(brief, "Approve Direction")  # → AI Production
+			apply_workflow(brief, "Approve Gate")  # → AI Production
 		brief.reload()
 		with acting_as(_user("Creative Director")):
 			apply_workflow(brief, "Complete Production")  # the agent finishes its work
@@ -201,7 +201,7 @@ class TestEngineGovernance(unittest.TestCase):
 		with acting_as(_cd_user()):
 			apply_workflow(brief, "Approve Production")
 		brief.reload()
-		self.assertEqual(brief.workflow_state, "Gate 2 Prep")
+		self.assertEqual(brief.workflow_state, "Gate Prep")
 
 	def test_duplicate_discriminator_role_blocked(self):
 		"""A second Active profile claiming an in-use discriminator_role fails."""

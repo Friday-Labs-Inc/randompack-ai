@@ -53,7 +53,7 @@ class TestLockstepWithDomainMachine(unittest.TestCase):
 		self.assertIn("CD Internal Gate", state_names)
 		# The two gate outcomes the loop labels are real CD-gated transitions.
 		transitions = {(f, n): a for f, _act, n, a in randompack_brand.TRANSITIONS}
-		self.assertEqual(transitions.get(("CD Internal Gate", "Gate 2 Prep")), randompack_brand.CD_ROLE)
+		self.assertEqual(transitions.get(("CD Internal Gate", "Gate Prep")), randompack_brand.CD_ROLE)
 		self.assertEqual(transitions.get(("CD Internal Gate", "AI Production")), randompack_brand.CD_ROLE)
 
 	def test_apprentice_profile_is_provisioned_with_remember(self):
@@ -87,7 +87,7 @@ class TestObserveTask(unittest.TestCase):
 		task_doc = MagicMock()
 		fr.get_doc.return_value = task_doc
 
-		study.on_brief_study_signal(_brief("CD Creative", "Gate 1 Prep"))
+		study.on_brief_study_signal(_brief("CD Creative", "Gate Prep"))
 
 		payload = fr.get_doc.call_args[0][0]
 		self.assertEqual(payload["doctype"], "Task")
@@ -112,7 +112,7 @@ class TestObserveTask(unittest.TestCase):
 	def test_no_project_skips_observe_loudly(self, fr):
 		# Finding R2 guard: no Friday Project = nothing readable; skip + log.
 		fr.db.get_value.return_value = "Creative Director"
-		study.on_brief_study_signal(_brief("CD Creative", "Gate 1 Prep", project=None))
+		study.on_brief_study_signal(_brief("CD Creative", "Gate Prep", project=None))
 		fr.get_doc.assert_not_called()
 		fr.log_error.assert_called()
 
@@ -120,13 +120,13 @@ class TestObserveTask(unittest.TestCase):
 	def test_open_observe_task_deduped(self, fr):
 		fr.db.get_value.return_value = "Creative Director"
 		fr.db.exists.return_value = True  # one already open
-		study.on_brief_study_signal(_brief("CD Creative", "Gate 1 Prep"))
+		study.on_brief_study_signal(_brief("CD Creative", "Gate Prep"))
 		fr.get_doc.assert_not_called()
 
 	@patch(f"{_M}.frappe")
 	def test_missing_apprentice_profile_logs_and_drops(self, fr):
 		fr.db.get_value.return_value = None
-		study.on_brief_study_signal(_brief("CD Creative", "Gate 1 Prep"))
+		study.on_brief_study_signal(_brief("CD Creative", "Gate Prep"))
 		fr.get_doc.assert_not_called()
 		fr.log_error.assert_called()
 
@@ -257,7 +257,7 @@ class TestGraduatedDrafting(unittest.TestCase):
 		self._fr_with_flag(fr, 1)
 		task_doc = MagicMock()
 		fr.get_doc.return_value = task_doc
-		study.on_brief_study_signal(_brief("CD Creative", "Gate 1 Prep"))
+		study.on_brief_study_signal(_brief("CD Creative", "Gate Prep"))
 		payload = fr.get_doc.call_args[0][0]
 		self.assertEqual(payload["phase_key"], study.OBSERVE_PHASE_KEY)
 
@@ -350,7 +350,7 @@ class TestNonSignals(unittest.TestCase):
 
 	@patch(f"{_M}.frappe")
 	def test_no_state_change_is_a_no_op(self, fr):
-		doc = _brief("CD Creative", "Gate 1 Prep")
+		doc = _brief("CD Creative", "Gate Prep")
 		doc.has_value_changed.return_value = False
 		study.on_brief_study_signal(doc)
 		fr.get_doc.assert_not_called()

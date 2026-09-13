@@ -11,6 +11,9 @@ CUSTOMER_TITLE_MAP: list[tuple[str, str]] = [
 	# No gate numbers in a client-facing title: a studio may quote three gates
 	# and name each one itself, so "(Gate 2)" is a claim about a shape the
 	# proposal no longer guarantees.
+	# One prefix for every client decision, because the pipeline no longer has a
+	# fixed number of them. The two below it are the retired two-gate machine.
+	("gate-presentation", "Client Review"),
 	("gate2-final-review", "Final Review"),
 	("gate1-client-presentation", "Direction Presentation"),
 	("naming-candidates", "Naming Candidates"),

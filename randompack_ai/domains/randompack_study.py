@@ -89,8 +89,14 @@ def on_brief_study_signal(doc, method: str | None = None) -> None:
 	"""Brand Brief on_update: harvest study signals from CD-owned transitions.
 
 	- leaving "CD Creative"                    → spawn the observe task
-	- "CD Internal Gate" → "Gate 2 Prep"       → labeled memory: APPROVE
+	- "CD Internal Gate" → a gate prep state   → labeled memory: APPROVE
 	- "CD Internal Gate" → "AI Production"     → labeled memory: REFINE (+ notes)
+
+	The approve branch used to name "Gate 2 Prep", which was where the CD's
+	approval landed on the two-gate machine. The gate cycle is reentrant now and
+	that approval lands on "Gate Prep" — so the old name would simply have
+	stopped matching, and the apprenticeship loop would have quietly stopped
+	learning what the Creative Director approves.
 	"""
 	try:
 		if not doc.has_value_changed("workflow_state"):
@@ -103,7 +109,7 @@ def on_brief_study_signal(doc, method: str | None = None) -> None:
 
 		if old == "CD Creative":
 			_spawn_observe_task(doc)
-		elif old == "CD Internal Gate" and new == "Gate 2 Prep":
+		elif old == "CD Internal Gate" and new in ("Gate Prep", "Gate 2 Prep"):
 			_record_gate_memory(doc, approved=True)
 		elif old == "CD Internal Gate" and new == "AI Production":
 			_record_gate_memory(doc, approved=False)

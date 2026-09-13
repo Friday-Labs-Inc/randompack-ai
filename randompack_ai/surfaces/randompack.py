@@ -397,16 +397,25 @@ def handle_gate_decided(data: dict, event) -> None:
 
 	doc = frappe.get_doc("Brand Brief", brief)
 	state = doc.workflow_state or ""
-	if "Gate 1" in state:
-		action = "Approve Direction"
-		if chosen:
-			doc.db_set("chosen_direction", chosen, update_modified=False)
-			doc.reload()
+
+	# A chosen direction is recorded whenever the client names one, at whichever
+	# gate they name it. It used to be read only at Gate 1, because Gate 1 was
+	# by definition the direction gate — a studio that puts the choice at its
+	# third gate would have had it dropped.
+	if chosen:
+		doc.db_set("chosen_direction", chosen, update_modified=False)
+		doc.reload()
+
+	if state == "Gate Review":
+		# One state, one action, any number of gates. Which decision this was is
+		# the proposal's business; the pipeline only needs to know it was made.
+		action = "Approve Gate"
+	elif "Gate 1" in state:
+		action = "Approve Direction"  # legacy two-gate machine
 	elif "Gate 2" in state:
-		action = "Final Approval"
-		# Past the last gate the pipeline has. If the proposal named more than
-		# two, the rest are never put to the client and this engagement would
-		# otherwise deliver without them, silently.
+		action = "Final Approval"  # legacy two-gate machine
+		# That machine has no third slot, so a proposal quoting more than two
+		# gates would deliver without ever asking about the rest.
 		from randompack_ai.integrations.randompack_bridge import warn_if_gates_remain
 
 		warn_if_gates_remain(rp_project, just_decided=str(data.get("which") or data.get("gate") or ""))

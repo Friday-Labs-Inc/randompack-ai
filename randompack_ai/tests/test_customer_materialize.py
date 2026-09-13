@@ -56,13 +56,16 @@ class TestSelectCustomerSources(unittest.TestCase):
 		]
 		out = materialize.select_customer_sources(files)
 		titles = [t for t, _ in out]
+		# No gate numbers. A studio may quote three gates and name each one
+		# itself, so "(Gate 2)" was a claim about a shape the proposal stopped
+		# guaranteeing when the ten-day package was retired.
 		self.assertEqual(
 			titles,
 			[
 				"Brand Guidelines",
 				"Brand System — Production Package",
-				"Final Review (Gate 2)",
-				"Direction Presentation (Gate 1)",
+				"Final Review",
+				"Direction Presentation",
 				"Naming Candidates",
 				"Brand Strategy",
 			],
@@ -104,15 +107,25 @@ class TestBridgeMapsSpeakDesign95(unittest.TestCase):
 	"""E2E finding #13 (second half): the maps only spoke the OLD phase vocabulary,
 	so RP's Build system task never advanced on the new machine."""
 
-	def test_production_phase_maps_to_build_system(self):
-		self.assertEqual(bridge._SUBJECT_MAP["production"], "Build system")
-		self.assertEqual(bridge._SUBJECT_MAP["buildout"], "Build system")  # legacy kept
+	def test_a_phase_tries_the_proposals_step_before_the_retired_one(self):
+		"""Each phase now maps to a tuple, newest vocabulary first: the step the
+		proposal actually creates, then the retired template's name so a brief
+		still in flight against an old project keeps writing back."""
+		self.assertEqual(bridge._SUBJECT_MAP["production"], ("Production", "Build system"))
+		self.assertEqual(bridge._SUBJECT_MAP["buildout"], ("Production", "Build system"))
 
-	def test_gate_task_and_doc_maps_cover_both_gates(self):
+	def test_the_gate_documents_cover_both_prep_phases(self):
 		for phase in ("gate1_prep", "gate2_prep"):
-			self.assertIn(phase, bridge._GATE_TASK_SUBJECT)
 			self.assertIn(phase, bridge._GATE_DOC_PREFIX)
 			self.assertIn(phase, bridge._GATE_DOC_TITLE)
+
+	def test_a_gates_identity_is_not_remembered_in_a_map(self):
+		"""There was a _GATE_TASK_SUBJECT mapping each prep phase to a fixed
+		gate name. There cannot be: the studio names its gates on the proposal
+		and may quote any number of them, so the gate is found by position in
+		the chain instead."""
+		self.assertFalse(hasattr(bridge, "_GATE_TASK_SUBJECT"))
+		self.assertTrue(callable(bridge._next_undecided_gate))
 
 
 class TestGateOpenSequence(unittest.TestCase):
@@ -120,16 +133,17 @@ class TestGateOpenSequence(unittest.TestCase):
 	push the presentation → signal gate-open → flip the RP gate task to Working."""
 
 	@patch.object(bridge, "_push_gate_presentation")
-	@patch.object(bridge, "_resolve_rp_task_by_subject")
+	@patch.object(bridge, "_next_undecided_gate")
 	@patch.object(bridge, "_resolve_rp_task")
 	@patch.object(bridge, "client")
 	@patch.object(bridge, "frappe")
 	def test_gate_prep_completion_pushes_then_opens_then_flips(
-		self, fr, m_client, m_resolve, m_resolve_by_subject, m_push_gate
+		self, fr, m_client, m_resolve, m_next_gate, m_push_gate
 	):
 		fr.db.get_value.return_value = "RP-PROJ-1"  # brief → rp_project
 		m_resolve.return_value = "RP-TASK-PREP"
-		m_resolve_by_subject.return_value = "RP-TASK-GATE1"
+		# The gate is whichever one the chain says is next, named by the studio.
+		m_next_gate.return_value = {"name": "RP-TASK-GATE1", "subject": "Choose a direction"}
 
 		order: list[str] = []
 		m_push_gate.side_effect = lambda *a, **k: order.append("push_presentation")

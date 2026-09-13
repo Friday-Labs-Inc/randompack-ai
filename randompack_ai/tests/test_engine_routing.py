@@ -111,9 +111,28 @@ class TestEngineRouting(unittest.TestCase):
 		self.assertEqual(naming.assigned_to_profile, "Brand Copywriter")
 
 	def test_human_gate_state_dispatches_nothing(self):
+		from frappe.model.workflow import apply_workflow
+
 		brief = _new_brief()
-		# Walk to Gate 1 Review by completing each agentic phase in turn.
-		for pk in ["strategy", "naming", "directions", "gate1_prep"]:
+		# Walk to Gate 1 Review. "directions" is not on this path any more: the
+		# human Creative Director owns that stage now, as "CD Creative", and a
+		# human state has no agentic phase for the engine to dispatch — so the
+		# walk has to fire his transition by hand, which is the point of the
+		# test one line further down.
+		for pk in ["strategy", "naming"]:
+			task = _task_for(brief.name, pk)
+			self.assertIsNotNone(task, f"expected a dispatched task for {pk}")
+			_complete(task.name)
+
+		brief.reload()
+		self.assertEqual(brief.workflow_state, "CD Creative")
+		self.assertIsNone(
+			_task_for(brief.name, "cd_creative"),
+			"CD Creative is the human's stage — the engine must dispatch nothing into it",
+		)
+		apply_workflow(brief, "Creative Ready")
+
+		for pk in ["gate1_prep"]:
 			task = _task_for(brief.name, pk)
 			self.assertIsNotNone(task, f"expected a dispatched task for {pk}")
 			_complete(task.name)

@@ -40,26 +40,54 @@ class TestBridge(unittest.TestCase):
 		bridge.on_task_transition(self._task(phase=None), "Completed")
 		mock_client.update_task_progress.assert_not_called()
 
+	@staticmethod
+	def _backend(mock_client, tasks):
+		"""What the backend answers when the bridge asks for the engagement.
+
+		The bridge resolves a real Task docname before it writes anything, so a
+		test that leaves this a bare MagicMock is testing nothing: every lookup
+		"succeeds" and returns another mock.
+		"""
+		mock_client.get_project_state.return_value = {"tasks": tasks}
+
 	@patch(f"{_B}.client")
 	@patch(f"{_B}.frappe")
 	def test_completed_maps_with_progress_and_note(self, mock_frappe, mock_client):
+		"""The legacy path, which a task carrying backend_ref still takes: it
+		composes the reference from the project and the phase rather than
+		resolving a real Task docname. The engine path does the resolving, and
+		test_bridge_writeback covers that one.
+
+		"completed" became "Completed" here, because RandomPack's
+		update_task_progress validates the status against an exact set and
+		rejects anything else — lowercase was silently a no-op.
+		"""
 		mock_frappe.db.get_value.return_value = "RP-100"
 		bridge.on_task_transition(
 			self._task(result={"status": "success", "summary": "done well"}), "Completed"
 		)
 		mock_client.update_task_progress.assert_called_once_with(
-			"RP-100:strategy", status="completed", progress=100
+			"RP-100:strategy", status="Completed", progress=100
 		)
 		note = mock_client.post_project_note.call_args.kwargs["note"]
 		self.assertIn("done well", note)
 
 	@patch(f"{_B}.client")
 	@patch(f"{_B}.frappe")
-	def test_gate_prep_completion_requests_gate_open(self, mock_frappe, mock_client):
+	def test_gate_prep_completion_requests_the_gate_the_studio_named(self, mock_frappe, mock_client):
+		"""Not "gate1". The studio names its gates on the proposal, and the
+		bridge asks for the next undecided one by position in the chain."""
 		mock_frappe.db.get_value.return_value = "RP-100"
+		self._backend(mock_client, [
+			{"name": "TASK-PREP", "subject": "Directions", "is_gate": 0},
+			{"name": "TASK-G1", "subject": "Choose a direction", "is_gate": 1, "status": "Open"},
+		])
+
 		bridge.on_task_transition(self._task(phase="gate1_prep"), "Completed")
+
 		mock_client.request_gate_open.assert_called_once()
-		self.assertEqual(mock_client.request_gate_open.call_args.kwargs["gate"], "gate1")
+		self.assertEqual(
+			mock_client.request_gate_open.call_args.kwargs["gate"], "Choose a direction")
 
 	@patch(f"{_B}.client")
 	@patch(f"{_B}.frappe")
@@ -77,19 +105,59 @@ class TestBridge(unittest.TestCase):
 
 
 class TestEventHandlers(unittest.TestCase):
+	"""A decided gate advances the brief's own workflow.
+
+	This used to assert that a milestone task was flipped to Completed and
+	saved. That is not what happens any more and has not been since the engine
+	arrived: the handler fires a workflow transition on the Brand Brief, and
+	which transition it fires is read from the brief's CURRENT state, not from
+	the gate's name — which is the whole reason the studio can name its gates
+	whatever it likes.
+	"""
+
+	def _decide(self, state, mock_frappe, payload=None):
+		brief = MagicMock()
+		brief.workflow_state = state
+		mock_frappe.db.get_value.return_value = "BB-0005"
+		mock_frappe.get_doc.return_value = brief
+		with patch("frappe.model.workflow.apply_workflow") as apply, \
+				patch("frappe.friday_core.engine.governance.acting_as"), \
+				patch(f"{_S}.post_project_note", create=True):
+			randompack.handle_gate_decided(
+				payload or {"project": "PRJ-1", "decision": "Approved"}, MagicMock())
+		return brief, apply
+
 	@patch(f"{_S}._remember")
 	@patch(f"{_S}._warroom")
 	@patch(f"{_S}.frappe")
-	def test_gate_decided_completes_milestone_once(self, mock_frappe, mock_war, mock_rem):
-		mock_frappe.db.get_value.side_effect = ["PRJ-1", "TASK-G1"]
-		gate_task = MagicMock()
-		gate_task.workflow_state = "Pending"
-		mock_frappe.get_doc.return_value = gate_task
-		randompack.handle_gate_decided(
-			{"project_id": "RP-100", "gate": "gate1", "decision": "Midnight Roast"}, MagicMock()
-		)
-		self.assertEqual(gate_task.workflow_state, "Completed")
-		gate_task.save.assert_called_once()
+	def test_the_first_gate_approves_the_direction(self, mock_frappe, mock_war, mock_rem):
+		_, apply = self._decide("Gate 1 Review", mock_frappe)
+		self.assertEqual(apply.call_args[0][1], "Approve Direction")
+
+	@patch(f"{_S}._remember")
+	@patch(f"{_S}._warroom")
+	@patch(f"{_S}.frappe")
+	def test_the_chosen_direction_is_recorded(self, mock_frappe, mock_war, mock_rem):
+		brief, _ = self._decide("Gate 1 Review", mock_frappe, {
+			"project": "PRJ-1", "decision": "Approved", "chosen_direction": "Midnight Roast"})
+		brief.db_set.assert_called_once_with(
+			"chosen_direction", "Midnight Roast", update_modified=False)
+
+	@patch(f"{_S}._remember")
+	@patch(f"{_S}._warroom")
+	@patch(f"{_S}.frappe")
+	def test_the_last_gate_is_the_final_approval(self, mock_frappe, mock_war, mock_rem):
+		_, apply = self._decide("Gate 2 Review", mock_frappe)
+		self.assertEqual(apply.call_args[0][1], "Final Approval")
+
+	@patch(f"{_S}._remember")
+	@patch(f"{_S}._warroom")
+	@patch(f"{_S}.frappe")
+	def test_a_refinement_does_not_advance_anything(self, mock_frappe, mock_war, mock_rem):
+		_, apply = self._decide("Gate 1 Review", mock_frappe, {
+			"project": "PRJ-1", "decision": "Refinement Requested",
+			"client_comments": "warmer"})
+		apply.assert_not_called()
 
 	@patch(f"{_S}._remember")
 	@patch(f"{_S}._warroom")

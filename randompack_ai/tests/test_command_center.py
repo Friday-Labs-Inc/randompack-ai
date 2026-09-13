@@ -191,3 +191,49 @@ class TestEventHandlers(unittest.TestCase):
 
 if __name__ == "__main__":
 	unittest.main()
+
+
+class TestTheStudioHearsFriday(unittest.TestCase):
+	"""There are two Ravens. Friday narrates into the war room on its own bench;
+	the studio logs into the backend's. Everything Friday said about the work was
+	landing in a room the people doing the work cannot open."""
+
+	def _say(self, text):
+		with patch(f"{_S}.frappe"), \
+				patch("frappe.friday_core.warroom.publisher._get_channel_id", return_value=None), \
+				patch("randompack_ai.integrations.randompack_client.send") as send:
+			randompack._warroom(text)
+		return send
+
+	def test_a_line_about_an_engagement_reaches_that_engagements_room(self):
+		send = self._say("**[PROJ-0585]** Gate 1 approved (Bold) — pipeline advanced.")
+
+		send.assert_called_once()
+		method, payload = send.call_args[0][0], send.call_args[0][1]
+		self.assertEqual(method, "randompack.api.v1.friday_says")
+		self.assertEqual(payload["project"], "PROJ-0585")
+
+	def test_a_line_about_nothing_in_particular_goes_to_the_studio(self):
+		"""Scheduler runs and retries belong to no client, and putting them in
+		one client's room buries that client's story under plumbing."""
+		send = self._say("Connector randompack-system retried and recovered.")
+
+		self.assertIsNone(send.call_args[0][1]["project"])
+
+	def test_the_war_room_going_quiet_does_not_silence_the_studio(self):
+		"""Separate try blocks: the studio hearing about it must not depend on
+		this bench's own room being reachable."""
+		with patch(f"{_S}.frappe"), \
+				patch("frappe.friday_core.warroom.publisher._get_channel_id",
+					  side_effect=RuntimeError("war room down")), \
+				patch("randompack_ai.integrations.randompack_client.send") as send:
+			randompack._warroom("**[PROJ-1]** something happened")
+
+		send.assert_called_once()
+
+	def test_the_backend_going_quiet_does_not_raise(self):
+		with patch(f"{_S}.frappe"), \
+				patch("frappe.friday_core.warroom.publisher._get_channel_id", return_value=None), \
+				patch("randompack_ai.integrations.randompack_client.send",
+					  side_effect=RuntimeError("backend down")):
+			randompack._warroom("anything")  # must not raise

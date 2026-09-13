@@ -24,6 +24,8 @@ from __future__ import annotations
 
 import json
 
+import re
+
 import frappe
 
 from randompack_ai import branding
@@ -283,14 +285,43 @@ def _find_project(backend_ref: str) -> str | None:
 	return frappe.db.get_value("Project", {"backend_ref": backend_ref}, "name")
 
 
+# **[PROJ-0585]** — the war room prefixes a message with the engagement it is
+# about, which is the only thing that says where a line belongs.
+_PROJECT_PREFIX = re.compile(r"^\*\*\[([^\]]+)\]\*\*")
+
+
 def _warroom(text: str) -> None:
-	"""Best-effort War Room post (reuses the task publisher's transport)."""
+	"""Best-effort War Room post, on this bench and on the studio's.
+
+	There are two Ravens. This bench has the war room, where Friday narrates
+	everything it does; the studio logs into the other one, on the backend. So
+	all of this commentary was landing in a room the people doing the work
+	cannot open, and the only things crossing were the notes the bridge posts
+	deliberately.
+
+	Mirrored, not moved: the war room stays the operator's log with everything
+	in it, and the studio gets the same line in the Raven they actually use —
+	in the engagement's own room when the message names one.
+	"""
 	try:
 		from frappe.friday_core.warroom.publisher import _get_channel_id, _post_to_raven
 
 		channel = _get_channel_id()
 		if channel:
 			_post_to_raven(channel, {"text": text, "message_type": "Text", "hide_in_message_history": False})
+	except Exception:
+		pass
+
+	# Separate try: the studio hearing about it must not depend on this bench's
+	# own room being reachable, and neither may break the work being narrated.
+	try:
+		from randompack_ai.integrations.randompack_client import send
+
+		match = _PROJECT_PREFIX.match(text.strip())
+		send("randompack.api.v1.friday_says", {
+			"text": text,
+			"project": match.group(1) if match else None,
+		})
 	except Exception:
 		pass
 

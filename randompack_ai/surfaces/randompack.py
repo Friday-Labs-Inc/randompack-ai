@@ -404,6 +404,12 @@ def handle_gate_decided(data: dict, event) -> None:
 			doc.reload()
 	elif "Gate 2" in state:
 		action = "Final Approval"
+		# Past the last gate the pipeline has. If the proposal named more than
+		# two, the rest are never put to the client and this engagement would
+		# otherwise deliver without them, silently.
+		from randompack_ai.integrations.randompack_bridge import warn_if_gates_remain
+
+		warn_if_gates_remain(rp_project, just_decided=str(data.get("which") or data.get("gate") or ""))
 	else:
 		_warroom(f"**[{rp_project}]** gate.decided but brief is at {state!r} — no matching gate transition; ignored.")
 		return

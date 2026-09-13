@@ -145,3 +145,69 @@ class TestFinishingAGatePrepOpensTheRealGate(unittest.TestCase):
     def test_a_non_gate_phase_opens_nothing(self):
         c = self._run("strategy")
         c.request_gate_open.assert_not_called()
+
+
+class TestTheGateSlotsAndTheProposalDisagree(unittest.TestCase):
+    """The pipeline has exactly two client-gate slots; a proposal may name any
+    number. Both mismatches used to be silent, which is the whole problem —
+    an engagement that stops, or one that delivers without asking."""
+
+    def _state(self, tasks):
+        return {"tasks": tasks}
+
+    @patch.object(bridge, "client")
+    @patch.object(bridge, "frappe")
+    def test_a_prep_with_no_gate_left_says_so(self, fr, c):
+        """One gate quoted, two slots. The second prep finds nothing to open
+        and the brief would wait at a review state for a decision that cannot
+        be made."""
+        c.get_project_state.return_value = self._state([
+            {"name": "T1", "subject": "Choose a direction", "is_gate": 1, "status": "Completed"},
+        ])
+        with patch("randompack_ai.surfaces.randompack._warroom") as war:
+            bridge._gate_slot_mismatch("RP-1", "BB-1", "gate2_prep")
+
+        war.assert_called_once()
+        self.assertIn("no gate left to open", war.call_args[0][0])
+        c.post_project_note.assert_called_once()
+
+    @patch.object(bridge, "client")
+    @patch.object(bridge, "frappe")
+    def test_gates_the_pipeline_can_never_open_are_named(self, fr, c):
+        c.get_project_state.return_value = self._state([
+            {"name": "T1", "subject": "Choose a direction", "is_gate": 1, "status": "Completed"},
+            {"name": "T2", "subject": "Build review", "is_gate": 1, "status": "Completed"},
+            {"name": "T3", "subject": "Launch sign-off", "is_gate": 1, "status": "Open"},
+        ])
+        with patch("randompack_ai.surfaces.randompack._warroom") as war:
+            bridge.warn_if_gates_remain("RP-1", just_decided="Build review")
+
+        war.assert_called_once()
+        self.assertIn("Launch sign-off", war.call_args[0][0])
+
+    @patch.object(bridge, "client")
+    @patch.object(bridge, "frappe")
+    def test_the_gate_being_decided_right_now_is_not_a_warning(self, fr, c):
+        """RandomPack may not have flipped its task to Completed yet — without
+        excluding it, the commonest firing would be about the gate the client
+        has this second decided."""
+        c.get_project_state.return_value = self._state([
+            {"name": "T1", "subject": "Choose a direction", "is_gate": 1, "status": "Completed"},
+            {"name": "T2", "subject": "Build review", "is_gate": 1, "status": "Working"},
+        ])
+        with patch("randompack_ai.surfaces.randompack._warroom") as war:
+            bridge.warn_if_gates_remain("RP-1", just_decided="Build review")
+
+        war.assert_not_called()
+
+    @patch.object(bridge, "client")
+    @patch.object(bridge, "frappe")
+    def test_two_gates_and_two_slots_is_quiet(self, fr, c):
+        c.get_project_state.return_value = self._state([
+            {"name": "T1", "subject": "Choose a direction", "is_gate": 1, "status": "Completed"},
+            {"name": "T2", "subject": "Build review", "is_gate": 1, "status": "Completed"},
+        ])
+        with patch("randompack_ai.surfaces.randompack._warroom") as war:
+            bridge.warn_if_gates_remain("RP-1", just_decided="Build review")
+
+        war.assert_not_called()

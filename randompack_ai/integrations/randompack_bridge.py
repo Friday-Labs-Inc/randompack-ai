@@ -141,6 +141,8 @@ def _engine_writeback(task, state: str) -> None:
 					summary=f"{task.get('title') or phase} is ready for client review.",
 				)
 				client.update_task_progress(gate_task["name"], status="Working")
+			else:
+				_gate_slot_mismatch(rp_project, brief_name, phase)
 		# Design 77: _push_deliverables fires from on_brief_state_change when the
 		# brief reaches Delivered, NOT here, so the project-level materialize
 		# package (assemble_project_package) has time to land first.
@@ -181,6 +183,75 @@ def _next_undecided_gate(rp_project: str) -> dict | None:
 			continue
 		return {"name": t.get("name"), "subject": t.get("subject") or ""}
 	return None
+
+
+def undecided_gates(rp_project: str) -> list[dict]:
+	"""Every client decision still outstanding, in running order."""
+	return [
+		{"name": t.get("name"), "subject": t.get("subject") or ""}
+		for t in _rp_tasks(rp_project)
+		if t.get("is_gate") and (t.get("status") or "") not in ("Completed", "Cancelled")
+	]
+
+
+def _gate_slot_mismatch(rp_project: str, brief_name: str, phase: str) -> None:
+	"""The pipeline reached a gate slot and the proposal has no gate for it.
+
+	The pipeline has exactly two client-gate slots; a proposal may name any
+	number. One gate and the second slot has nothing to open — and the brief
+	then waits at that gate's review state for a decision that can never be
+	made. Nothing raises, nothing is logged, and the engagement simply stops.
+
+	Until the gate cycle is reentrant this cannot be fixed here, but it can
+	stop being silent: a human is told, in the two places a human looks.
+	"""
+	from randompack_ai.surfaces.randompack import _warroom
+
+	message = (
+		f"**[{rp_project}]** {phase} finished but the proposal has no gate left to open. "
+		"The brief is about to wait at a client gate that will never be decided — "
+		"move it forward from the desk, or add the gate to the proposal."
+	)
+	try:
+		_warroom(message)
+	except Exception:
+		frappe.log_error(title="gate slot mismatch could not reach the war room")
+	try:
+		client.post_project_note(
+			rp_project,
+			note=(
+				"The pipeline expected another client decision here and the proposal "
+				"does not have one. Waiting for a human."
+			),
+		)
+	except Exception:
+		pass
+
+
+def warn_if_gates_remain(rp_project: str, just_decided: str = "") -> None:
+	"""Called as the pipeline leaves its last gate. The other half of the same
+	mismatch: three gates quoted, two slots to open them in, so the third is
+	never put to the client and the engagement delivers without it.
+
+	`just_decided` is excluded. This runs while handling that gate's own
+	decision, and whether RandomPack has already flipped its task to Completed
+	is a race — without this the warning's commonest firing would be about the
+	gate the client just decided.
+	"""
+	from randompack_ai.surfaces.randompack import _warroom
+
+	remaining = [g for g in undecided_gates(rp_project) if g["subject"] != just_decided]
+	if not remaining:
+		return
+	names = ", ".join(g["subject"] for g in remaining if g["subject"])
+	try:
+		_warroom(
+			f"**[{rp_project}]** the pipeline is past its last gate and the proposal "
+			f"still has {len(remaining)} undecided: {names}. The client will not be "
+			"asked about those unless a human opens them."
+		)
+	except Exception:
+		frappe.log_error(title="unopened gates could not reach the war room")
 
 
 def _push_gate_presentation(rp_project: str, brief_name: str, phase: str) -> None:
@@ -314,12 +385,15 @@ def _legacy_writeback(task, state: str) -> None:
 				project_ref, note=f"[{phase}] completed:\n{summary[:2000]}", task_ref=task_ref
 			)
 		# project_ref is RandomPack's project; task.project is Friday's own.
-		gate = _next_undecided_gate(project_ref) if phase in _GATE_PREP_PHASES else None
-		if gate:
-			gate = gate["subject"]
-			client.request_gate_open(
-				project_ref, gate=gate, summary=f"{task.title} is ready for client review."
-			)
+		if phase in _GATE_PREP_PHASES:
+			gate = _next_undecided_gate(project_ref)
+			if gate:
+				client.request_gate_open(
+					project_ref, gate=gate["subject"],
+					summary=f"{task.title} is ready for client review.",
+				)
+			else:
+				_gate_slot_mismatch(project_ref, task.get("work_item_name") or "", phase)
 
 
 def _result_summary(task) -> str:

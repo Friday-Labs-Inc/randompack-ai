@@ -308,7 +308,12 @@ def _warroom(text: str) -> None:
 
 		channel = _get_channel_id()
 		if channel:
-			_post_to_raven(channel, {"text": text, "message_type": "Text", "hide_in_message_history": False})
+			# Client-typed text — a refinement request, a comment — reaches here
+			# verbatim, and the publisher hands it to Raven as markdown, which
+			# passes raw HTML through. The studio's own Raven got this guard
+			# earlier; this bench's war room had not.
+			safe = frappe.utils.sanitize_html(frappe.utils.md_to_html(text or ""), always_sanitize=True)
+			_post_to_raven(channel, {"text": safe, "message_type": "Text", "hide_in_message_history": False})
 	except Exception:
 		pass
 
@@ -527,7 +532,7 @@ def handle_comment_added(data: dict, event) -> None:
 	"""Relay client/team comments to the War Room (Friday's own notes are
 	already filtered out by the backend — locked contract, no self-dedupe)."""
 	ref = _backend_ref(data, event)
-	comment = str(data.get("comment") or data.get("text") or "")[:500]
+	comment = str(data.get("content") or data.get("comment") or data.get("text") or "")[:500]
 	if comment:
 		_warroom(f"💬 **[PRJ {ref}]** comment: {comment}")
 

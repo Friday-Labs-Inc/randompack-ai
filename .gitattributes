@@ -1,0 +1,24 @@
+# Friday Labs line-ending and diff policy. Engineering Standard §1.
+# LF in the repository, always. A CRLF slipping in produces a whole-file diff
+# that hides the one line that actually changed.
+* text=auto eol=lf
+
+*.sh text eol=lf
+*.py text eol=lf
+*.bat text eol=crlf
+
+# Lockfiles are generated: keep them out of review diffs, keep them in git.
+yarn.lock        linguist-generated=true -diff
+package-lock.json linguist-generated=true -diff
+pnpm-lock.yaml   linguist-generated=true -diff
+
+# Binaries: never merged, never diffed as text.
+*.png binary
+*.jpg binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.FCStd binary
+*.STL binary
+*.blend binary

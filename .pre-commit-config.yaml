@@ -1,0 +1,43 @@
+# Friday Labs pre-commit hooks. Engineering Standard §3.
+#
+# These are the same checks CI runs, run before the commit exists. Every `rev`
+# is a pinned tag — a floating rev means today's commit and tomorrow's commit
+# are checked by different tools (Standard §5, reproducible builds).
+exclude: 'node_modules|\.git|\.venv|dist|build'
+default_stages: [pre-commit]
+fail_fast: false
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: '\.(json|txt|csv|md|svg|po)$'
+      - id: end-of-file-fixer
+        exclude: '\.(svg|po)$'
+      - id: check-merge-conflict
+      - id: check-ast
+      - id: check-json
+      - id: check-toml
+      - id: check-yaml
+      - id: debug-statements
+      - id: detect-private-key
+      - id: mixed-line-ending
+        args: ['--fix=lf']
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    # Must match the version pinned in .github/workflows/ci.yml.
+    rev: v0.15.8
+    hooks:
+      - id: ruff
+        name: ruff import sorter
+        args: ['--select=I', '--fix']
+      - id: ruff
+        name: ruff linter
+      - id: ruff-format
+        name: ruff formatter
+
+ci:
+  autoupdate_schedule: weekly
+  skip: []
+  submodules: false

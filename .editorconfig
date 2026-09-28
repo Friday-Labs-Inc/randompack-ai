@@ -1,0 +1,36 @@
+# Friday Labs house whitespace. Engineering Standard §1.
+# Tabs in Python because Frappe's own codebase and ruff-format config use tabs;
+# matching upstream keeps every diff against the framework readable.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = tab
+indent_size = 4
+
+[*.py]
+indent_style = tab
+indent_size = 4
+max_line_length = 110
+
+[*.{js,jsx,ts,tsx,css,scss,vue}]
+indent_style = tab
+indent_size = 2
+
+[*.{json,yml,yaml,toml}]
+indent_style = space
+indent_size = 2
+
+[*.md]
+# Markdown uses two trailing spaces for a hard line break.
+trim_trailing_whitespace = false
+
+[*.{sh,bash}]
+indent_style = space
+indent_size = 2
+
+[Makefile]
+indent_style = tab

@@ -3,3 +3,16 @@ __pycache__/
 *.egg-info/
 .eggs/
 node_modules/
+# --- standard-kit ---
+# Config and credentials never belong in git (Standard §8).
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+# Local tooling.
+.venv/
+node_modules/
+__pycache__/
+.ruff_cache/
+.pytest_cache/

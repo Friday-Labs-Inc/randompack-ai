@@ -19,6 +19,7 @@ import unittest
 from unittest.mock import patch
 
 import frappe
+
 from randompack_ai.integrations import randompack_bridge as bridge
 from randompack_ai.surfaces import randompack as surface
 
@@ -53,7 +54,9 @@ class TestRandompackInbound(unittest.TestCase):
 		frappe.db.rollback()
 
 	def test_payment_received_idles_at_intake(self):
-		surface.handle_payment_received({"brief": "OB-T1", "brief_snapshot": {"business_name": "T1Co"}}, _Evt())
+		surface.handle_payment_received(
+			{"brief": "OB-T1", "brief_snapshot": {"business_name": "T1Co"}}, _Evt()
+		)
 		b = _brief("OB-T1")
 		self.assertTrue(b)
 		self.assertEqual(frappe.db.get_value("Brand Brief", b, "workflow_state"), "Intake")
@@ -70,7 +73,8 @@ class TestRandompackInbound(unittest.TestCase):
 		# webhook worker — the handler must self-elevate for the start transition.
 		frappe.set_user("Guest")
 		surface.handle_project_created(
-			{"project": "PROJ-T2", "brief": "OB-T2", "brief_snapshot": json.dumps({"company": "T2Co"})}, _Evt()
+			{"project": "PROJ-T2", "brief": "OB-T2", "brief_snapshot": json.dumps({"company": "T2Co"})},
+			_Evt(),
 		)
 		frappe.set_user("Administrator")
 		b = _brief("OB-T2")
@@ -78,13 +82,14 @@ class TestRandompackInbound(unittest.TestCase):
 		self.assertEqual(frappe.db.get_value("Brand Brief", b, "workflow_state"), "Strategy")
 		self.assertEqual(frappe.db.get_value("Brand Brief", b, "rp_project"), "PROJ-T2")
 		phases = [
-			t.phase_key
-			for t in frappe.get_all("Task", filters={"work_item_name": b}, fields=["phase_key"])
+			t.phase_key for t in frappe.get_all("Task", filters={"work_item_name": b}, fields=["phase_key"])
 		]
 		self.assertIn("strategy", phases)
 
 	def test_project_created_replay_is_noop(self):
-		surface.handle_payment_received({"brief": "OB-T5", "brief_snapshot": {"business_name": "T5Co"}}, _Evt())
+		surface.handle_payment_received(
+			{"brief": "OB-T5", "brief_snapshot": {"business_name": "T5Co"}}, _Evt()
+		)
 		surface.handle_project_created({"project": "PROJ-T5", "brief": "OB-T5", "brief_snapshot": {}}, _Evt())
 		b = _brief("OB-T5")
 		frappe.db.set_value("Brand Brief", b, "workflow_state", "Directions")  # pretend it advanced
@@ -93,7 +98,9 @@ class TestRandompackInbound(unittest.TestCase):
 		self.assertEqual(frappe.db.get_value("Brand Brief", b, "workflow_state"), "Directions")
 
 	def test_gate1_decided_advances_as_gateway(self):
-		surface.handle_payment_received({"brief": "OB-T3", "brief_snapshot": {"business_name": "T3Co"}}, _Evt())
+		surface.handle_payment_received(
+			{"brief": "OB-T3", "brief_snapshot": {"business_name": "T3Co"}}, _Evt()
+		)
 		surface.handle_project_created({"project": "PROJ-T3", "brief": "OB-T3", "brief_snapshot": {}}, _Evt())
 		b = _brief("OB-T3")
 		frappe.db.set_value("Brand Brief", b, "workflow_state", "Gate 1 Review")
@@ -112,8 +119,7 @@ class TestRandompackInbound(unittest.TestCase):
 		surface.handle_payment_received({"brief": "OB-T77"}, _Evt())
 		frappe.set_user("Guest")
 		surface.handle_project_created(
-			{"project": "RP-PROJ-77", "brief": "OB-T77",
-			 "brief_snapshot": json.dumps({"company": "T77Co"})},
+			{"project": "RP-PROJ-77", "brief": "OB-T77", "brief_snapshot": json.dumps({"company": "T77Co"})},
 			_Evt(),
 		)
 		frappe.set_user("Administrator")
@@ -131,30 +137,34 @@ class TestRandompackInbound(unittest.TestCase):
 		surface.handle_payment_received({"brief": "OB-T77B"}, _Evt())
 		frappe.set_user("Guest")
 		surface.handle_project_created(
-			{"project": "RP-PROJ-77B", "brief": "OB-T77B",
-			 "brief_snapshot": json.dumps({"company": "T77BCo"})},
+			{
+				"project": "RP-PROJ-77B",
+				"brief": "OB-T77B",
+				"brief_snapshot": json.dumps({"company": "T77BCo"}),
+			},
 			_Evt(),
 		)
-		first_project = frappe.db.get_value(
-			"Brand Brief", {"rp_brief": "OB-T77B"}, "project"
-		)
+		first_project = frappe.db.get_value("Brand Brief", {"rp_brief": "OB-T77B"}, "project")
 		# Replay
 		surface.handle_project_created(
-			{"project": "RP-PROJ-77B", "brief": "OB-T77B",
-			 "brief_snapshot": json.dumps({"company": "T77BCo"})},
+			{
+				"project": "RP-PROJ-77B",
+				"brief": "OB-T77B",
+				"brief_snapshot": json.dumps({"company": "T77BCo"}),
+			},
 			_Evt(),
 		)
 		frappe.set_user("Administrator")
-		second_project = frappe.db.get_value(
-			"Brand Brief", {"rp_brief": "OB-T77B"}, "project"
-		)
+		second_project = frappe.db.get_value("Brand Brief", {"rp_brief": "OB-T77B"}, "project")
 		self.assertEqual(first_project, second_project, "replay must reuse the same local Project")
 		# And there must be only one Project row with that backend_ref.
 		count = frappe.db.count("Project", filters={"backend_ref": "RP-PROJ-77B"})
 		self.assertEqual(count, 1)
 
 	def test_refinement_requested_does_not_advance(self):
-		surface.handle_payment_received({"brief": "OB-T4", "brief_snapshot": {"business_name": "T4Co"}}, _Evt())
+		surface.handle_payment_received(
+			{"brief": "OB-T4", "brief_snapshot": {"business_name": "T4Co"}}, _Evt()
+		)
 		surface.handle_project_created({"project": "PROJ-T4", "brief": "OB-T4", "brief_snapshot": {}}, _Evt())
 		b = _brief("OB-T4")
 		frappe.db.set_value("Brand Brief", b, "workflow_state", "Gate 1 Review")
@@ -209,15 +219,19 @@ class TestRandompackBridge(unittest.TestCase):
 			result=json.dumps({"summary": "three directions"}),
 		)
 		captured = {}
-		with patch(
-			"randompack_ai.integrations.randompack_client.get_project_state",
-			return_value=self._PROJECT_STATE,
-		), patch(
-			"randompack_ai.integrations.randompack_client.update_task_progress",
-			side_effect=lambda task_ref, **k: captured.update(task_ref=task_ref, **k),
-		), patch(
-			"randompack_ai.integrations.randompack_client.post_project_note",
-			lambda *a, **k: None,
+		with (
+			patch(
+				"randompack_ai.integrations.randompack_client.get_project_state",
+				return_value=self._PROJECT_STATE,
+			),
+			patch(
+				"randompack_ai.integrations.randompack_client.update_task_progress",
+				side_effect=lambda task_ref, **k: captured.update(task_ref=task_ref, **k),
+			),
+			patch(
+				"randompack_ai.integrations.randompack_client.post_project_note",
+				lambda *a, **k: None,
+			),
 		):
 			bridge.on_task_transition(task, "Completed")
 		# the real backend docname, NOT "PROJ-Y:directions"
@@ -231,9 +245,7 @@ class TestRandompackBridge(unittest.TestCase):
 		task = frappe._dict(
 			work_item_doctype="Brand Brief", work_item_name=doc.name, phase_key="directions", title="d"
 		)
-		with patch(
-			"randompack_ai.integrations.randompack_client.update_task_progress"
-		) as m_utp:
+		with patch("randompack_ai.integrations.randompack_client.update_task_progress") as m_utp:
 			bridge.on_task_transition(task, "Completed")
 		m_utp.assert_not_called()
 
@@ -245,14 +257,22 @@ class TestRandompackBridge(unittest.TestCase):
 		(text/PDF deliverables from attach-deliverable + materialize.py).
 		Without this, customers see only images. Dedup by file_url."""
 		# A brief linked to a local Friday Project via the Design 77 'project' field.
-		project = frappe.get_doc({
-			"doctype": "Project", "project_name": "Test Project 77",
-			"status": "Open", "backend_ref": "BR-77-PROJ",
-		}).insert(ignore_permissions=True)
-		brief = frappe.get_doc({
-			"doctype": "Brand Brief", "business_name": "BridgeCo77",
-			"rp_project": "RP-PROJ-77", "project": project.name,
-		}).insert(ignore_permissions=True)
+		project = frappe.get_doc(
+			{
+				"doctype": "Project",
+				"project_name": "Test Project 77",
+				"status": "Open",
+				"backend_ref": "BR-77-PROJ",
+			}
+		).insert(ignore_permissions=True)
+		brief = frappe.get_doc(
+			{
+				"doctype": "Brand Brief",
+				"business_name": "BridgeCo77",
+				"rp_project": "RP-PROJ-77",
+				"project": project.name,
+			}
+		).insert(ignore_permissions=True)
 
 		# Capture the union of file queries via mocked get_all.
 		def fake_get_all(doctype, filters=None, fields=None, **k):
@@ -261,17 +281,22 @@ class TestRandompackBridge(unittest.TestCase):
 			if filters.get("attached_to_doctype") == "Brand Brief":
 				return [frappe._dict(name="f-img", file_name="logo.jpg", file_url="/files/logo.jpg")]
 			if filters.get("attached_to_doctype") == "Project":
-				return [frappe._dict(name="f-md", file_name="brand-guidelines.md",
-				                     file_url="/files/brand-guidelines.md")]
+				return [
+					frappe._dict(
+						name="f-md", file_name="brand-guidelines.md", file_url="/files/brand-guidelines.md"
+					)
+				]
 			return []
 
 		captured = []
 		fake_doc = frappe._dict(get_content=lambda: b"BYTES")
-		with patch("frappe.get_all", side_effect=fake_get_all), \
-		     patch("frappe.get_doc", return_value=fake_doc), \
-		     patch(
-			"randompack_ai.integrations.randompack_client.attach_deliverable",
-			side_effect=lambda rp, file_name, content, description="": captured.append(file_name),
+		with (
+			patch("frappe.get_all", side_effect=fake_get_all),
+			patch("frappe.get_doc", return_value=fake_doc),
+			patch(
+				"randompack_ai.integrations.randompack_client.attach_deliverable",
+				side_effect=lambda rp, file_name, content, description="": captured.append(file_name),
+			),
 		):
 			bridge._push_deliverables("RP-PROJ-77", brief.name)
 
@@ -285,8 +310,12 @@ class TestRandompackBridge(unittest.TestCase):
 		any other state change. Without this guard, the bridge would push the
 		full deliverable set repeatedly."""
 		doc = frappe._dict(
-			name="BB-T77", workflow_state="Delivered", rp_project="RP-PROJ-X",
-			get=lambda k, default=None: {"workflow_state": "Delivered", "rp_project": "RP-PROJ-X"}.get(k, default),
+			name="BB-T77",
+			workflow_state="Delivered",
+			rp_project="RP-PROJ-X",
+			get=lambda k, default=None: {"workflow_state": "Delivered", "rp_project": "RP-PROJ-X"}.get(
+				k, default
+			),
 			has_value_changed=lambda f: True,  # state just changed
 		)
 		with patch.object(bridge, "_push_deliverables") as m_push:
@@ -297,8 +326,12 @@ class TestRandompackBridge(unittest.TestCase):
 		"""A re-save while the brief is already at Delivered must not push
 		again — has_value_changed returns False."""
 		doc = frappe._dict(
-			name="BB-T78", workflow_state="Delivered", rp_project="RP-PROJ-X",
-			get=lambda k, default=None: {"workflow_state": "Delivered", "rp_project": "RP-PROJ-X"}.get(k, default),
+			name="BB-T78",
+			workflow_state="Delivered",
+			rp_project="RP-PROJ-X",
+			get=lambda k, default=None: {"workflow_state": "Delivered", "rp_project": "RP-PROJ-X"}.get(
+				k, default
+			),
 			has_value_changed=lambda f: False,
 		)
 		with patch.object(bridge, "_push_deliverables") as m_push:
@@ -308,8 +341,12 @@ class TestRandompackBridge(unittest.TestCase):
 	def test_on_brief_state_change_silent_for_non_delivered_state(self):
 		"""Other state transitions (Strategy, Naming, etc.) must not push."""
 		doc = frappe._dict(
-			name="BB-T79", workflow_state="Naming", rp_project="RP-PROJ-X",
-			get=lambda k, default=None: {"workflow_state": "Naming", "rp_project": "RP-PROJ-X"}.get(k, default),
+			name="BB-T79",
+			workflow_state="Naming",
+			rp_project="RP-PROJ-X",
+			get=lambda k, default=None: {"workflow_state": "Naming", "rp_project": "RP-PROJ-X"}.get(
+				k, default
+			),
 			has_value_changed=lambda f: True,
 		)
 		with patch.object(bridge, "_push_deliverables") as m_push:

@@ -32,6 +32,7 @@ from __future__ import annotations
 import json
 
 import frappe
+
 from randompack_ai.integrations import randompack_client as client
 
 # The gate a gate-prep phase opens is NOT named here any more.
@@ -103,7 +104,11 @@ _STATUS_MAP = {
 def on_task_transition(task, state: str) -> None:
 	"""Mirror one Friday Task transition to RandomPack. Never raises."""
 	try:
-		if task.get("work_item_doctype") == "Brand Brief" and task.get("work_item_name") and task.get("phase_key"):
+		if (
+			task.get("work_item_doctype") == "Brand Brief"
+			and task.get("work_item_name")
+			and task.get("phase_key")
+		):
 			_engine_writeback(task, state)
 		elif task.get("backend_ref") and task.get("project"):
 			_legacy_writeback(task, state)
@@ -126,7 +131,8 @@ def _engine_writeback(task, state: str) -> None:
 	if state == "Blocked":
 		if rp_task:
 			client.signal_pending_review(
-				rp_task, issue_name="see FRIDAY_WAR_ROOM",
+				rp_task,
+				issue_name="see FRIDAY_WAR_ROOM",
 				summary=f"{task.get('title') or phase} is blocked and needs a human decision.",
 			)
 		return
@@ -136,9 +142,7 @@ def _engine_writeback(task, state: str) -> None:
 		return
 
 	if rp_task:
-		client.update_task_progress(
-			rp_task, status=status, progress=100 if state == "Completed" else None
-		)
+		client.update_task_progress(rp_task, status=status, progress=100 if state == "Completed" else None)
 
 	if state == "Completed":
 		summary = _result_summary(task)
@@ -293,8 +297,7 @@ def warn_if_gates_remain(rp_project: str, just_decided: str = "") -> None:
 		frappe.log_error(title="unopened gates could not reach the war room")
 
 
-def _push_gate_presentation(rp_project: str, brief_name: str, phase: str,
-							gate_label: str = "") -> None:
+def _push_gate_presentation(rp_project: str, brief_name: str, phase: str, gate_label: str = "") -> None:
 	"""Push the gate's review document to RP as a branded, human-named PDF —
 	BEFORE the gate opens (E2E finding #6). Best-effort: a render/push hiccup
 	must not block the gate-open signal; the operator can re-push."""
@@ -333,9 +336,7 @@ def _push_gate_presentation(rp_project: str, brief_name: str, phase: str,
 	pdf = materialize._render_pdf(display, content, brand_context=ctx)
 	payload = pdf if pdf else content.encode("utf-8")
 	out_name = f"{display}.pdf" if pdf else f"{display}.md"
-	client.attach_deliverable(
-		rp_project, file_name=out_name, content=payload, description=display
-	)
+	client.attach_deliverable(rp_project, file_name=out_name, content=payload, description=display)
 
 
 def _push_deliverables(rp_project: str, brief_name: str) -> None:
@@ -392,7 +393,9 @@ def _push_deliverables(rp_project: str, brief_name: str) -> None:
 			content = content.encode("utf-8")
 		display = str(entry["file_name"] or "").rsplit(".", 1)[0]
 		client.attach_deliverable(
-			rp_project, file_name=entry["file_name"], content=content,
+			rp_project,
+			file_name=entry["file_name"],
+			content=content,
 			description=display or entry["file_name"],
 		)
 
@@ -409,7 +412,8 @@ def _legacy_writeback(task, state: str) -> None:
 
 	if state == "Blocked":
 		client.signal_pending_review(
-			task_ref, issue_name="see FRIDAY_WAR_ROOM",
+			task_ref,
+			issue_name="see FRIDAY_WAR_ROOM",
 			summary=f"{task.title} is blocked and needs a human decision.",
 		)
 		return
@@ -431,7 +435,8 @@ def _legacy_writeback(task, state: str) -> None:
 			gate = _next_undecided_gate(project_ref)
 			if gate:
 				client.request_gate_open(
-					project_ref, gate=gate["subject"],
+					project_ref,
+					gate=gate["subject"],
 					summary=f"{task.title} is ready for client review.",
 				)
 			else:
@@ -446,7 +451,7 @@ def _result_summary(task) -> str:
 	if isinstance(raw, str):
 		try:
 			data = json.loads(raw)
-		except (TypeError, ValueError):
+		except TypeError, ValueError:
 			return str(raw)
 	return str(data.get("summary") or "")
 

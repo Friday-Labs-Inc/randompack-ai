@@ -18,6 +18,7 @@ import unittest
 from unittest.mock import MagicMock, call, patch
 
 from frappe.friday_core.deliverables import materialize
+
 from randompack_ai.integrations import randompack_bridge as bridge
 
 _M = "frappe.friday_core.deliverables.materialize"

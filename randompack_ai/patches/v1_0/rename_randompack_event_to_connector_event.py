@@ -23,9 +23,7 @@ import frappe
 
 
 def execute():
-	if frappe.db.exists("DocType", "RandomPack Event") and not frappe.db.exists(
-		"DocType", "Connector Event"
-	):
+	if frappe.db.exists("DocType", "RandomPack Event") and not frappe.db.exists("DocType", "Connector Event"):
 		# force=True: rename even though the on-disk JSON already carries the new
 		# name (the schema file was renamed in the same change). Runs as
 		# Administrator during migrate, so no ignore_permissions kwarg.

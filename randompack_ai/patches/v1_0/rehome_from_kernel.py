@@ -73,5 +73,10 @@ def _rehome_chat_platforms():
 		return
 	for name, mod in frappe.get_all("Chat Platform", fields=["name", "adapter_module"], as_list=True):
 		if mod and mod.startswith("frappe.friday_core.surfaces.randompack"):
-			frappe.db.set_value("Chat Platform", name, "adapter_module",
-				mod.replace("frappe.friday_core.surfaces.", "randompack_ai.surfaces."), update_modified=False)
+			frappe.db.set_value(
+				"Chat Platform",
+				name,
+				"adapter_module",
+				mod.replace("frappe.friday_core.surfaces.", "randompack_ai.surfaces."),
+				update_modified=False,
+			)

@@ -40,9 +40,9 @@ from __future__ import annotations
 import json
 
 import frappe
+from frappe.friday_core.surfaces import chat_spine
 
 from randompack_ai import branding
-from frappe.friday_core.surfaces import chat_spine
 
 __all__ = ["chat_send", "provision_advisor_profile", "validate_action"]
 
@@ -201,8 +201,7 @@ def _action_messages(transcript_text: str, context: dict) -> list[dict]:
 		)
 	elif label:
 		gate_desc = (
-			f'OPEN GATE: "{label}". Allowed decisions: Approved | Refinement Requested '
-			"(no direction)."
+			f'OPEN GATE: "{label}". Allowed decisions: Approved | Refinement Requested (no direction).'
 		)
 	else:
 		gate_desc = "NO gate is open — action must be null."
@@ -226,7 +225,7 @@ def _parse_action(content: str) -> dict | None:
 	for cand in candidates:
 		try:
 			parsed = json.loads(cand)
-		except (ValueError, TypeError):
+		except ValueError, TypeError:
 			continue
 		if isinstance(parsed, dict):
 			action = parsed.get("action")
@@ -276,7 +275,7 @@ def validate_action(action: dict | None, context: dict | None) -> dict | None:
 
 	try:
 		confidence = max(0.0, min(1.0, float(action.get("confidence", 0.0))))
-	except (ValueError, TypeError):
+	except ValueError, TypeError:
 		confidence = 0.0
 	note = action.get("note")
 	note = str(note) if note not in (None, "") else None
@@ -305,7 +304,11 @@ def _make_action_pass(context: dict | None):
 			return [], {}  # no open gate → skip the model call entirely
 		usage: dict = {}
 		try:
-			resp = provider.chat(_action_messages(chat_spine.transcript(history_msgs, extra_user=message, extra_assistant=reply), context))
+			resp = provider.chat(
+				_action_messages(
+					chat_spine.transcript(history_msgs, extra_user=message, extra_assistant=reply), context
+				)
+			)
 			if isinstance(resp, dict):
 				usage = resp.get("usage") or {}
 				content = resp.get("content", "")
@@ -340,7 +343,7 @@ def chat_send():
 		return {"ok": False, "error": "bad signature"}
 	try:
 		body = json.loads(raw or b"{}")
-	except (ValueError, TypeError):
+	except ValueError, TypeError:
 		frappe.local.response["http_status_code"] = 400
 		return {"ok": False, "error": "bad request"}
 

@@ -78,16 +78,18 @@ class TestBridge(unittest.TestCase):
 		"""Not "gate1". The studio names its gates on the proposal, and the
 		bridge asks for the next undecided one by position in the chain."""
 		mock_frappe.db.get_value.return_value = "RP-100"
-		self._backend(mock_client, [
-			{"name": "TASK-PREP", "subject": "Directions", "is_gate": 0},
-			{"name": "TASK-G1", "subject": "Choose a direction", "is_gate": 1, "status": "Open"},
-		])
+		self._backend(
+			mock_client,
+			[
+				{"name": "TASK-PREP", "subject": "Directions", "is_gate": 0},
+				{"name": "TASK-G1", "subject": "Choose a direction", "is_gate": 1, "status": "Open"},
+			],
+		)
 
 		bridge.on_task_transition(self._task(phase="gate1_prep"), "Completed")
 
 		mock_client.request_gate_open.assert_called_once()
-		self.assertEqual(
-			mock_client.request_gate_open.call_args.kwargs["gate"], "Choose a direction")
+		self.assertEqual(mock_client.request_gate_open.call_args.kwargs["gate"], "Choose a direction")
 
 	@patch(f"{_B}.client")
 	@patch(f"{_B}.frappe")
@@ -120,11 +122,14 @@ class TestEventHandlers(unittest.TestCase):
 		brief.workflow_state = state
 		mock_frappe.db.get_value.return_value = "BB-0005"
 		mock_frappe.get_doc.return_value = brief
-		with patch("frappe.model.workflow.apply_workflow") as apply, \
-				patch("frappe.friday_core.engine.governance.acting_as"), \
-				patch(f"{_S}.post_project_note", create=True):
+		with (
+			patch("frappe.model.workflow.apply_workflow") as apply,
+			patch("frappe.friday_core.engine.governance.acting_as"),
+			patch(f"{_S}.post_project_note", create=True),
+		):
 			randompack.handle_gate_decided(
-				payload or {"project": "PRJ-1", "decision": "Approved"}, MagicMock())
+				payload or {"project": "PRJ-1", "decision": "Approved"}, MagicMock()
+			)
 		return brief, apply
 
 	@patch(f"{_S}._remember")
@@ -138,10 +143,12 @@ class TestEventHandlers(unittest.TestCase):
 	@patch(f"{_S}._warroom")
 	@patch(f"{_S}.frappe")
 	def test_the_chosen_direction_is_recorded(self, mock_frappe, mock_war, mock_rem):
-		brief, _ = self._decide("Gate 1 Review", mock_frappe, {
-			"project": "PRJ-1", "decision": "Approved", "chosen_direction": "Midnight Roast"})
-		brief.db_set.assert_called_once_with(
-			"chosen_direction", "Midnight Roast", update_modified=False)
+		brief, _ = self._decide(
+			"Gate 1 Review",
+			mock_frappe,
+			{"project": "PRJ-1", "decision": "Approved", "chosen_direction": "Midnight Roast"},
+		)
+		brief.db_set.assert_called_once_with("chosen_direction", "Midnight Roast", update_modified=False)
 
 	@patch(f"{_S}._remember")
 	@patch(f"{_S}._warroom")
@@ -154,9 +161,11 @@ class TestEventHandlers(unittest.TestCase):
 	@patch(f"{_S}._warroom")
 	@patch(f"{_S}.frappe")
 	def test_a_refinement_does_not_advance_anything(self, mock_frappe, mock_war, mock_rem):
-		_, apply = self._decide("Gate 1 Review", mock_frappe, {
-			"project": "PRJ-1", "decision": "Refinement Requested",
-			"client_comments": "warmer"})
+		_, apply = self._decide(
+			"Gate 1 Review",
+			mock_frappe,
+			{"project": "PRJ-1", "decision": "Refinement Requested", "client_comments": "warmer"},
+		)
 		apply.assert_not_called()
 
 	@patch(f"{_S}._remember")
@@ -199,9 +208,11 @@ class TestTheStudioHearsFriday(unittest.TestCase):
 	landing in a room the people doing the work cannot open."""
 
 	def _say(self, text):
-		with patch(f"{_S}.frappe"), \
-				patch("frappe.friday_core.warroom.publisher._get_channel_id", return_value=None), \
-				patch("randompack_ai.integrations.randompack_client.send") as send:
+		with (
+			patch(f"{_S}.frappe"),
+			patch("frappe.friday_core.warroom.publisher._get_channel_id", return_value=None),
+			patch("randompack_ai.integrations.randompack_client.send") as send,
+		):
 			randompack._warroom(text)
 		return send
 
@@ -223,17 +234,24 @@ class TestTheStudioHearsFriday(unittest.TestCase):
 	def test_the_war_room_going_quiet_does_not_silence_the_studio(self):
 		"""Separate try blocks: the studio hearing about it must not depend on
 		this bench's own room being reachable."""
-		with patch(f"{_S}.frappe"), \
-				patch("frappe.friday_core.warroom.publisher._get_channel_id",
-					  side_effect=RuntimeError("war room down")), \
-				patch("randompack_ai.integrations.randompack_client.send") as send:
+		with (
+			patch(f"{_S}.frappe"),
+			patch(
+				"frappe.friday_core.warroom.publisher._get_channel_id",
+				side_effect=RuntimeError("war room down"),
+			),
+			patch("randompack_ai.integrations.randompack_client.send") as send,
+		):
 			randompack._warroom("**[PROJ-1]** something happened")
 
 		send.assert_called_once()
 
 	def test_the_backend_going_quiet_does_not_raise(self):
-		with patch(f"{_S}.frappe"), \
-				patch("frappe.friday_core.warroom.publisher._get_channel_id", return_value=None), \
-				patch("randompack_ai.integrations.randompack_client.send",
-					  side_effect=RuntimeError("backend down")):
+		with (
+			patch(f"{_S}.frappe"),
+			patch("frappe.friday_core.warroom.publisher._get_channel_id", return_value=None),
+			patch(
+				"randompack_ai.integrations.randompack_client.send", side_effect=RuntimeError("backend down")
+			),
+		):
 			randompack._warroom("anything")  # must not raise

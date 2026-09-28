@@ -30,9 +30,10 @@ import unittest
 from unittest.mock import patch
 
 import frappe
-from randompack_ai.domains import randompack_brand as bundle
 from frappe.friday_core.engine.governance import acting_as
 from frappe.model.workflow import apply_workflow
+
+from randompack_ai.domains import randompack_brand as bundle
 
 
 def _user(profile: str) -> str:
@@ -99,9 +100,7 @@ class TestEngineGovernance(unittest.TestCase):
 		frappe.db.rollback()
 		bundle.provision()  # idempotent — ensures the bundle exists on any site
 		# Stub the runner so a dispatched (Assigned) task never calls the LLM.
-		cls._runner = patch(
-			"frappe.friday_core.tasks.runner.on_agent_task_assigned", lambda **kw: None
-		)
+		cls._runner = patch("frappe.friday_core.tasks.runner.on_agent_task_assigned", lambda **kw: None)
 		cls._runner.start()
 
 	@classmethod

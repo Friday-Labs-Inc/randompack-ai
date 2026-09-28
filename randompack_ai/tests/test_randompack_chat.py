@@ -128,7 +128,9 @@ class TestBrandAttributesFetch(unittest.TestCase):
 		out = chat._brand_attributes()
 		self.assertEqual(out, ["Bold", "Heritage", "Playful"])
 		send.assert_called_once_with(chat.CONNECTOR_NAME, chat._BRAND_ATTR_PATH, {})
-		self.assertEqual(fr.cache.return_value.set_value.call_args.kwargs["expires_in_sec"], chat._BRAND_ATTR_TTL)
+		self.assertEqual(
+			fr.cache.return_value.set_value.call_args.kwargs["expires_in_sec"], chat._BRAND_ATTR_TTL
+		)
 
 	@patch("frappe.friday_core.connectors.client.send")
 	@patch(f"{chat.__name__}.frappe")
@@ -181,7 +183,14 @@ class TestChatFirstIntake(unittest.TestCase):
 
 	def test_new_fields_are_in_the_vocabulary(self):
 		names = {f["name"] for f in chat._FIELDS}
-		for f in ("brand_story", "brand_surfaces", "color_preferences", "brand_animal", "brand_symbol", "logo_style"):
+		for f in (
+			"brand_story",
+			"brand_surfaces",
+			"color_preferences",
+			"brand_animal",
+			"brand_symbol",
+			"logo_style",
+		):
 			self.assertIn(f, names)
 
 	def test_logo_style_names_its_exact_options(self):

@@ -34,9 +34,7 @@ def execute():
 	# NB: query tabSingles by raw SQL — `frappe.db.exists("Singles", ...)` emits
 	# `SELECT name FROM tabSingles`, but that table has no `name` column
 	# (doctype/field/value), which errors and poisons the transaction.
-	had_settings = bool(
-		frappe.db.sql("SELECT 1 FROM `tabSingles` WHERE doctype=%s LIMIT 1", (OLD_SETTINGS,))
-	)
+	had_settings = bool(frappe.db.sql("SELECT 1 FROM `tabSingles` WHERE doctype=%s LIMIT 1", (OLD_SETTINGS,)))
 
 	if had_settings:
 		values = frappe.db.get_singles_dict(OLD_SETTINGS) or {}

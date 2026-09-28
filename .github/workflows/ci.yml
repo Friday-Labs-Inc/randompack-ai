@@ -31,10 +31,10 @@ jobs:
   # ---------------------------------------------------------------- stage 0
   hygiene:
     name: Hygiene
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -167,7 +167,7 @@ jobs:
   # ---------------------------------------------------------------- detect
   detect:
     name: Detect toolchains
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       python: ${{ steps.d.outputs.python }}
@@ -179,7 +179,7 @@ jobs:
       node_version: ${{ steps.d.outputs.node_version }}
       pkg: ${{ steps.d.outputs.pkg }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - id: d
         name: Read the manifests
@@ -233,10 +233,10 @@ jobs:
     name: Lint (python)
     needs: detect
     if: needs.detect.outputs.python == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       # Pinned: a floating linter version turns an unrelated PR red.
       - uses: astral-sh/ruff-action@v3
         with:
@@ -251,10 +251,10 @@ jobs:
     name: Lint (shell)
     needs: detect
     if: needs.detect.outputs.shell == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: shellcheck
         run: |
           set -euo pipefail
@@ -269,10 +269,10 @@ jobs:
     name: Lint and test (node)
     needs: detect
     if: needs.detect.outputs.node == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ needs.detect.outputs.node_version }}
@@ -299,7 +299,7 @@ jobs:
     name: Tests (bench)
     needs: detect
     if: needs.detect.outputs.bench == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
       APP: ${{ needs.detect.outputs.app }}
@@ -317,7 +317,7 @@ jobs:
         image: redis:7-alpine
         ports: ['6379:6379']
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           path: app-src
 
@@ -372,7 +372,7 @@ jobs:
     name: required
     if: always()
     needs: [hygiene, detect, lint-python, lint-shell, lint-node, test-python]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Every job that ran must have succeeded

@@ -7,3 +7,6 @@
 #
 # Append the full 40-character SHA of each formatting-only commit below, with a
 # comment naming it.
+
+# ruff format + import sort on adopting the engineering standard, 2026-09-28.
+14cb5d9b8d6fd5b00bbb8bd3a6a1e96a5e8711be

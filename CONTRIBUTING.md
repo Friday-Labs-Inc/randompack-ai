@@ -49,7 +49,7 @@ pre-commit install
 ## The loop
 
 1. **Branch** off the default branch: `feat/`, `fix/`, `docs/`, `chore/`,
-   `refactor/`, `test/`, `ci/` or `perf/` + a short slug.
+   `refactor/`, `test/`, `style/`, `ci/` or `perf/` + a short slug.
    `feat/brand-brief-intake`, not `mira-wip`.
 2. **Commit** with `<type>(<scope>): <summary>` in the imperative mood.
    `fix(intake): reject a brief with no client` — not `fixed stuff`.

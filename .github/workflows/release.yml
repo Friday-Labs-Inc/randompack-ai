@@ -1,0 +1,113 @@
+# Friday Labs release automation. Engineering Standard §7.
+#
+# Releases are cut from an annotated tag, by a human, on the default branch.
+# This workflow does not decide when to release; it turns the decision into an
+# artefact: a GitHub Release whose notes are the squash-merge subjects since the
+# previous tag. That is why §3 requires conventional commit subjects — the
+# changelog is generated from them, so a lazy subject is a bad release note.
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'
+
+# Least privilege: the only write this workflow needs is the release itself.
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Publish release ${{ github.ref_name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: The tag must be on the default branch
+        run: |
+          set -euo pipefail
+          # A tag cut from a side branch produces a release nobody can reproduce
+          # from the default branch's history.
+          default="${{ github.event.repository.default_branch }}"
+          git fetch --quiet origin "$default"
+          if ! git merge-base --is-ancestor "${{ github.sha }}" "origin/$default"; then
+            echo "::error::${{ github.ref_name }} is not an ancestor of $default"
+            exit 1
+          fi
+
+      - name: The tag must be annotated
+        run: |
+          set -euo pipefail
+          # Lightweight tags carry no author, date or message: an unattributable
+          # release.
+          if [ "$(git cat-file -t "${{ github.ref_name }}")" != "tag" ]; then
+            echo "::error::${{ github.ref_name }} is a lightweight tag; use git tag -a"
+            exit 1
+          fi
+
+      - name: Build the notes from conventional commit subjects
+        id: notes
+        run: |
+          set -euo pipefail
+          prev=$(git describe --tags --abbrev=0 "${{ github.ref_name }}^" 2>/dev/null || true)
+          if [ -n "$prev" ]; then
+            range="$prev..${{ github.ref_name }}"
+            echo "previous tag: $prev"
+          else
+            range="${{ github.ref_name }}"
+            echo "no previous tag; first release"
+          fi
+
+          {
+            echo "## What changed"
+            echo
+            for type in feat fix perf refactor docs style build ci test chore revert; do
+              body=$(git log --no-merges --format='- %s (%h)' "$range" \
+                     | grep -E "^- ${type}(\([^)]*\))?!?: " || true)
+              [ -z "$body" ] && continue
+              case "$type" in
+                feat) heading="Features" ;;
+                fix) heading="Fixes" ;;
+                perf) heading="Performance" ;;
+                refactor) heading="Refactoring" ;;
+                docs) heading="Documentation" ;;
+                *) heading="Maintenance ($type)" ;;
+              esac
+              printf '### %s\n\n%s\n\n' "$heading" "$body"
+            done
+            breaking=$(git log --no-merges --format='- %s (%h)' "$range" \
+                       | grep -E '^- [a-z]+(\([^)]*\))?!: ' || true)
+            if [ -n "$breaking" ]; then
+              printf '### Breaking\n\n%s\n\n' "$breaking"
+            fi
+            echo "---"
+            echo
+            echo "Tagged from \`${{ github.sha }}\`. Standard §7."
+          } > RELEASE_NOTES.md
+
+          cat RELEASE_NOTES.md
+
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          prerelease=""
+          case "${{ github.ref_name }}" in
+            *-*) prerelease="--prerelease" ;;
+          esac
+          # Idempotent: re-running the workflow on the same tag edits the
+          # existing release instead of failing.
+          if gh release view "${{ github.ref_name }}" >/dev/null 2>&1; then
+            gh release edit "${{ github.ref_name }}" \
+              --notes-file RELEASE_NOTES.md
+          else
+            # shellcheck disable=SC2086
+            gh release create "${{ github.ref_name }}" \
+              --title "${{ github.ref_name }}" \
+              --notes-file RELEASE_NOTES.md $prerelease
+          fi

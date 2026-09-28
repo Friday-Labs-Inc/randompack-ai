@@ -30,7 +30,7 @@ def _configured(key: str, default: str) -> str:
 	"""
 	try:
 		raw = frappe.conf.get(key)
-	except (AttributeError, RuntimeError):
+	except AttributeError, RuntimeError:
 		# No site bound (import-time use, some CLI paths) — fall back, don't raise.
 		return default
 	if raw is None:
@@ -60,6 +60,4 @@ def apply(text: str) -> str:
 	A plain replace, not str.format, so a stray brace in prompt copy can never
 	raise KeyError in the middle of a customer conversation.
 	"""
-	return text.replace(PLACEHOLDER, assistant_name()).replace(
-		STUDIO_PLACEHOLDER, studio_name()
-	)
+	return text.replace(PLACEHOLDER, assistant_name()).replace(STUDIO_PLACEHOLDER, studio_name())

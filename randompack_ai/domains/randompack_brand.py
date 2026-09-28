@@ -230,7 +230,7 @@ PHASES: list[dict] = [
 			"market claims. Then draft strategy & positioning: market "
 			"position, the core audience insight, the ONE differentiating idea, and a "
 			"crisp positioning statement. After the draft, call attach-deliverable "
-			"with project_name=\"{{ project }}\" and file_name=\"strategy.md\" passing "
+			'with project_name="{{ project }}" and file_name="strategy.md" passing '
 			"your draft as content, so the customer sees it on their project page. "
 			"Reply with the full draft."
 		),
@@ -249,8 +249,8 @@ PHASES: list[dict] = [
 			"for the client's context. Produce 8-12 name candidates, each with a "
 			"one-line rationale that ties back to the positioning and basic screening "
 			"notes (pronunciation, obvious conflicts). After the list, call "
-			"attach-deliverable with project_name=\"{{ project }}\" and "
-			"file_name=\"naming-candidates.md\" passing the full list as content. "
+			'attach-deliverable with project_name="{{ project }}" and '
+			'file_name="naming-candidates.md" passing the full list as content. '
 			"Humans shortlist; trademark/domain checks are theirs."
 		),
 	},
@@ -277,10 +277,10 @@ PHASES: list[dict] = [
 		"prompt": (
 			"The client has a decision to make and you are assembling what they "
 			"need in order to make it. "
-			"FIRST call list-project-files with project_name=\"{{ project }}\" — "
+			'FIRST call list-project-files with project_name="{{ project }}" — '
 			"this returns each attached File as {name, file_name, ...}. Read the "
 			"ones that are new since the last client decision by calling "
-			"get-project-file with project_name=\"{{ project }}\" and file_name "
+			'get-project-file with project_name="{{ project }}" and file_name '
 			"set to EITHER the file's `name` (docname) OR its `file_name` (human "
 			"name); both work, do NOT invent a name. Early in an engagement those "
 			"will be the human Creative Director's direction options — logo "
@@ -293,7 +293,7 @@ PHASES: list[dict] = [
 			"are being asked to choose between or approve, each option in a "
 			"client-friendly paragraph faithful to the files, and a recommendation "
 			"with your reasoning. After the summary, call attach-deliverable with "
-			"project_name=\"{{ project }}\" and file_name=\"gate-presentation.md\" "
+			'project_name="{{ project }}" and file_name="gate-presentation.md" '
 			"passing the full text as content — this is what the client opens when "
 			"the gate is put to them. Reply with the full presentation text."
 		),
@@ -316,13 +316,13 @@ PHASES: list[dict] = [
 		"prompt": (
 			"The human Creative Director has just uploaded their direction options "
 			"(logo concepts + design system) to the project. FIRST call "
-			"list-project-files with project_name=\"{{ project }}\" — this returns "
+			'list-project-files with project_name="{{ project }}" — this returns '
 			"each attached File as {name, file_name, ...}. Then, for EACH file whose "
 			"file_name looks like a Creative Director upload (typically a design "
 			"system doc, direction options, logo concepts — NOT the earlier "
 			"strategy*.md or naming-candidates*.md; you'll get those via "
 			"get-phase-outputs below), call get-project-file with "
-			"project_name=\"{{ project }}\" and file_name set to EITHER the file's "
+			'project_name="{{ project }}" and file_name set to EITHER the file\'s '
 			"`name` (docname) OR its `file_name` (human name) from the list — both "
 			"work; do NOT invent a name. Read each file's `content` — those files "
 			"ARE the directions; never invent or restyle them. Then call "
@@ -333,7 +333,7 @@ PHASES: list[dict] = [
 			"their files, citing colours/typography/mark from their system), "
 			"naming shortlist context, and a recommendation with reasoning. After "
 			"the summary, call attach-deliverable with "
-			"project_name=\"{{ project }}\" and file_name=\"gate1-client-presentation.md\" "
+			'project_name="{{ project }}" and file_name="gate1-client-presentation.md" '
 			"passing the full presentation as content — this is what the client "
 			"clicks at Gate 1. Reply with the full presentation text."
 		),
@@ -358,11 +358,11 @@ PHASES: list[dict] = [
 			"The client of {{ business_name }} chose the direction "
 			"\"{{ chosen_direction or 'the approved direction' }}\" from the options "
 			"the human Creative Director created. Their design system is LAW: FIRST "
-			"call list-project-files with project_name=\"{{ project }}\" — this "
+			'call list-project-files with project_name="{{ project }}" — this '
 			"returns each attached File as {name, file_name, ...}. Then, for EACH "
 			"Creative Director upload (design system doc, direction options, logo "
 			"concepts — NOT strategy*.md / naming*.md / earlier deliverable-*.md), "
-			"call get-project-file with project_name=\"{{ project }}\" and file_name "
+			'call get-project-file with project_name="{{ project }}" and file_name '
 			"set to EITHER the file's `name` (docname) OR `file_name` (human name) "
 			"from the list — both work; do NOT invent a name. Follow their palette, "
 			"typography, logo usage, and rules EXACTLY; never invent outside their "
@@ -374,8 +374,8 @@ PHASES: list[dict] = [
 			"typography hierarchy, voice & tone rules, application copy (web hero, "
 			"about, boilerplate), designer-ready specs for every core asset, and "
 			"generate-image production visuals that follow the system. After the "
-			"package, call attach-deliverable with project_name=\"{{ project }}\" "
-			"and file_name=\"production-package.md\" passing the full package as "
+			'package, call attach-deliverable with project_name="{{ project }}" '
+			'and file_name="production-package.md" passing the full package as '
 			"content. Reply with the full package."
 		),
 	},
@@ -386,14 +386,14 @@ PHASES: list[dict] = [
 		"agent_role": "Brand Strategist",
 		"skills": ["get-brand-brief", "get-phase-outputs", "list-project-files", "attach-deliverable"],
 		"prompt": (
-			"FIRST call list-project-files with project_name=\"{{ project }}\" to "
+			'FIRST call list-project-files with project_name="{{ project }}" to '
 			"see what's already on the project, then get-phase-outputs to read the "
 			"production package (or the legacy build-out package) and the earlier "
 			"decisions for {{ business_name }}. "
 			"THEN assemble the client-facing final-review summary (brief {{ name }}): "
 			"what was built, the decisions made, and what delivery contains. After "
-			"the summary, call attach-deliverable with project_name=\"{{ project }}\" "
-			"and file_name=\"gate2-final-review.md\" passing the full summary as "
+			'the summary, call attach-deliverable with project_name="{{ project }}" '
+			'and file_name="gate2-final-review.md" passing the full summary as '
 			"content — this is what the client clicks at Gate 2. Reply with the full "
 			"presentation text."
 		),
@@ -405,15 +405,15 @@ PHASES: list[dict] = [
 		"agent_role": "Brand Copywriter",
 		"skills": ["get-brand-brief", "get-phase-outputs", "list-project-files", "attach-deliverable"],
 		"prompt": (
-			"FIRST call list-project-files with project_name=\"{{ project }}\" to "
+			'FIRST call list-project-files with project_name="{{ project }}" to '
 			"see what's already on the project, then get-phase-outputs to read the "
 			"production package (or the legacy build-out package) and the strategy "
 			"for {{ business_name }}. THEN draft "
 			"the complete brand guidelines document (brief {{ name }}): strategy "
 			"recap, logo usage rules, palette with values, typography, voice & tone "
 			"with examples, and application do/don'ts. After the document, call "
-			"attach-deliverable with project_name=\"{{ project }}\" and "
-			"file_name=\"brand-guidelines.md\" passing the full document as content "
+			'attach-deliverable with project_name="{{ project }}" and '
+			'file_name="brand-guidelines.md" passing the full document as content '
 			"— this is the customer's primary deliverable. Reply with the full "
 			"document in Markdown."
 		),
@@ -443,11 +443,17 @@ PHASES: list[dict] = [
 		"from_state": "Buildout",
 		"action": "Complete Buildout",
 		"agent_role": "Creative Director",
-		"skills": ["get-brand-brief", "get-phase-outputs", "list-project-files", "generate-image", "attach-deliverable"],
+		"skills": [
+			"get-brand-brief",
+			"get-phase-outputs",
+			"list-project-files",
+			"generate-image",
+			"attach-deliverable",
+		],
 		"prompt": (
 			"The client of {{ business_name }} chose the direction "
 			"\"{{ chosen_direction or 'the approved direction' }}\". FIRST call "
-			"list-project-files with project_name=\"{{ project }}\" to see what's "
+			'list-project-files with project_name="{{ project }}" to see what\'s '
 			"already on the project, then get-phase-outputs to read the strategy and "
 			"the three directions — build on the chosen direction's ACTUAL palette, "
 			"typography, and logo concept rather than inventing a fresh take. Call "
@@ -456,7 +462,7 @@ PHASES: list[dict] = [
 			"typography hierarchy, voice & tone rules, application copy (web hero, "
 			"about, boilerplate), and designer-ready specs for every core asset. "
 			"After the package, call attach-deliverable with "
-			"project_name=\"{{ project }}\" and file_name=\"buildout-package.md\" "
+			'project_name="{{ project }}" and file_name="buildout-package.md" '
 			"passing the full package as content. Reply with the full package."
 		),
 	},
@@ -766,24 +772,21 @@ def _ensure_workflow_masters() -> None:
 	Workflow references; they must exist first."""
 	for state, _allow_edit in STATES:
 		if not frappe.db.exists("Workflow State", state):
-			frappe.get_doc(
-				{"doctype": "Workflow State", "workflow_state_name": state, "style": ""}
-			).insert(ignore_permissions=True)
+			frappe.get_doc({"doctype": "Workflow State", "workflow_state_name": state, "style": ""}).insert(
+				ignore_permissions=True
+			)
 	for _from, action, _next, _allowed in TRANSITIONS:
 		if not frappe.db.exists("Workflow Action Master", action):
-			frappe.get_doc(
-				{"doctype": "Workflow Action Master", "workflow_action_name": action}
-			).insert(ignore_permissions=True)
+			frappe.get_doc({"doctype": "Workflow Action Master", "workflow_action_name": action}).insert(
+				ignore_permissions=True
+			)
 
 
 def _ensure_workflow() -> None:
 	"""Upsert the Frappe Workflow on Brand Brief. Rebuilds states + transitions
 	from STATES/TRANSITIONS each run so code changes (e.g. the Intake state)
 	reach an already-provisioned site. Existing briefs keep their current state."""
-	states = [
-		{"state": state, "doc_status": "0", "allow_edit": allow_edit}
-		for state, allow_edit in STATES
-	]
+	states = [{"state": state, "doc_status": "0", "allow_edit": allow_edit} for state, allow_edit in STATES]
 	transitions = [
 		{"state": frm, "action": action, "next_state": nxt, "allowed": allowed, "allow_self_approval": 1}
 		for frm, action, nxt, allowed in TRANSITIONS
@@ -988,9 +991,7 @@ def _append_missing(doc, table_field: str, key: str, values: list[str]) -> None:
 def _model_config() -> tuple[str | None, str | None]:
 	"""Reuse whatever model the main 'Friday' profile runs on, so the specialists
 	work wherever Friday works. Falls back to the first Active LLM Provider."""
-	row = frappe.db.get_value(
-		"Agent Profile", "Friday", ["model_provider", "model_name"], as_dict=True
-	)
+	row = frappe.db.get_value("Agent Profile", "Friday", ["model_provider", "model_name"], as_dict=True)
 	if row and row.get("model_provider"):
 		return row.model_provider, row.model_name
 	provider = frappe.db.get_value("LLM Provider", {"is_active": 1}, "name")

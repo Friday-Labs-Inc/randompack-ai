@@ -1,0 +1,23 @@
+# Friday Labs code ownership. Engineering Standard §4.
+#
+# CODEOWNERS is what turns "someone should review this" into an automatic
+# reviewer request. One catch-all owner is mandatory; the rest is per-repo.
+#
+# GitHub matches the LAST matching rule, so put the catch-all first and
+# narrow afterwards.
+
+# Catch-all: every PR gets at least one owner.
+*                           @Fridaylabsinc
+
+# Anything that changes the gate itself needs the platform owner, because a
+# change here silently changes what "green" means in every other PR.
+/.github/                   @Fridaylabsinc
+/.github/workflows/         @Fridaylabsinc
+/.pre-commit-config.yaml    @Fridaylabsinc
+/.editorconfig              @Fridaylabsinc
+/CONTRIBUTING.md            @Fridaylabsinc
+
+# Deploy and infrastructure: a wrong merge here is a production incident, not a
+# failing test.
+/deploy/                    @Fridaylabsinc
+/*.sh                       @Fridaylabsinc

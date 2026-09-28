@@ -23,14 +23,12 @@ CONTRACT NOTES (agreed with the randompack side, design 60):
 from __future__ import annotations
 
 import json
-
 import re
 
 import frappe
+from frappe.friday_core.connectors import core as connector_core
 
 from randompack_ai import branding
-
-from frappe.friday_core.connectors import core as connector_core
 
 # This connector's registry id (the Connector row created by the 81b migration).
 CONNECTOR_NAME = "randompack-system"
@@ -96,7 +94,7 @@ def _ingest_brief(rp_brief: str, snapshot: dict) -> str:
 	if isinstance(snapshot, str):
 		try:
 			snapshot = json.loads(snapshot)
-		except (ValueError, TypeError):
+		except ValueError, TypeError:
 			snapshot = {}
 
 	doc_fields: dict = {"doctype": "Brand Brief", "status": "Ready", "rp_brief": rp_brief}
@@ -147,14 +145,18 @@ def _brief_summary(snapshot: dict, rp_brief: str) -> str:
 	if isinstance(snapshot, str):
 		try:
 			snapshot = json.loads(snapshot)
-		except (ValueError, TypeError):
+		except ValueError, TypeError:
 			snapshot = {}
 	snapshot = snapshot or {}
 	lines = []
 	for label, key in (
-		("Company", "company_name"), ("Contact", "full_name"), ("What they do", "what_you_do"),
-		("Differentiator", "differentiator"), ("Audience", "target_audience"),
-		("Stage", "stage"), ("Preferred start", "preferred_start"),
+		("Company", "company_name"),
+		("Contact", "full_name"),
+		("What they do", "what_you_do"),
+		("Differentiator", "differentiator"),
+		("Audience", "target_audience"),
+		("Stage", "stage"),
+		("Preferred start", "preferred_start"),
 	):
 		value = snapshot.get(key)
 		if value:
@@ -178,8 +180,9 @@ def _assign_to_cd(task_name: str, summary: str) -> None:
 			return
 		from frappe.desk.form import assign_to
 
-		assign_to.add({"assign_to": users, "doctype": "Task", "name": task_name,
-					   "description": summary[:140]})
+		assign_to.add(
+			{"assign_to": users, "doctype": "Task", "name": task_name, "description": summary[:140]}
+		)
 	except Exception:
 		frappe.log_error(title="friday.randompack _assign_to_cd failed")
 
@@ -220,18 +223,20 @@ def handle_brief_submitted(data: dict, event) -> None:
 		return  # a replay; the desk already has it
 
 	summary = _brief_summary(snapshot, rp_brief)
-	task = frappe.get_doc({
-		"doctype": "Task",
-		"title": f"Review brief — {company or rp_brief}",
-		"description": summary,
-		"project": project,
-		"backend_ref": rp_brief,
-		"workflow_state": "Pending",
-		# A person's task. `milestone` is the mode the engine never dispatches.
-		"execution_mode": "milestone",
-		"dispatchable": 0,
-		"priority": "normal",
-	}).insert(ignore_permissions=True)
+	task = frappe.get_doc(
+		{
+			"doctype": "Task",
+			"title": f"Review brief — {company or rp_brief}",
+			"description": summary,
+			"project": project,
+			"backend_ref": rp_brief,
+			"workflow_state": "Pending",
+			# A person's task. `milestone` is the mode the engine never dispatches.
+			"execution_mode": "milestone",
+			"dispatchable": 0,
+			"priority": "normal",
+		}
+	).insert(ignore_permissions=True)
 	_assign_to_cd(task.name, summary)
 	_warroom(f"New brief from {company or rp_brief} — on the Creative Director's desk.")
 
@@ -264,13 +269,15 @@ def _ensure_friday_project(rp_project: str, rp_brief: str, business_name: str | 
 		return existing
 	name_hint = (business_name or "").strip() or f"RandomPack {rp_project or rp_brief}"
 	try:
-		doc = frappe.get_doc({
-			"doctype": "Project",
-			"project_name": f"{name_hint} ({rp_project or rp_brief})",
-			"description": f"Brand pipeline for RandomPack project {rp_project!r} (brief {rp_brief!r}).",
-			"status": "Open",
-			"backend_ref": rp_project or rp_brief,
-		})
+		doc = frappe.get_doc(
+			{
+				"doctype": "Project",
+				"project_name": f"{name_hint} ({rp_project or rp_brief})",
+				"description": f"Brand pipeline for RandomPack project {rp_project!r} (brief {rp_brief!r}).",
+				"status": "Open",
+				"backend_ref": rp_project or rp_brief,
+			}
+		)
 		doc.insert(ignore_permissions=True)
 		return doc.name
 	except Exception:
@@ -323,10 +330,13 @@ def _warroom(text: str) -> None:
 		from randompack_ai.integrations.randompack_client import send
 
 		match = _PROJECT_PREFIX.match(text.strip())
-		send("randompack.api.v1.friday_says", {
-			"text": text,
-			"project": match.group(1) if match else None,
-		})
+		send(
+			"randompack.api.v1.friday_says",
+			{
+				"text": text,
+				"project": match.group(1) if match else None,
+			},
+		)
 	except Exception:
 		pass
 
@@ -383,7 +393,9 @@ def handle_project_created(data: dict, event) -> None:
 	# Pipeline transition (Intake → Strategy), which lets the engine dispatch the
 	# first phase WITH the project ref set. A brief already past Intake is a replay.
 	if doc.workflow_state and doc.workflow_state != INITIAL_STATE:
-		_warroom(f"**[{rp_project or rp_brief}]** project.created replay — pipeline already running ({doc.workflow_state}); no-op.")
+		_warroom(
+			f"**[{rp_project or rp_brief}]** project.created replay — pipeline already running ({doc.workflow_state}); no-op."
+		)
 		return
 
 	from frappe.friday_core.engine.governance import acting_as
@@ -400,7 +412,12 @@ def handle_project_created(data: dict, event) -> None:
 	from randompack_ai.integrations.randompack_client import post_project_note
 
 	if rp_project:
-		post_project_note(rp_project, note=branding.apply("{assistant} started the brand pipeline (strategy → directions → gates → delivery)."))
+		post_project_note(
+			rp_project,
+			note=branding.apply(
+				"{assistant} started the brand pipeline (strategy → directions → gates → delivery)."
+			),
+		)
 
 
 def handle_gate_decided(data: dict, event) -> None:
@@ -413,22 +430,27 @@ def handle_gate_decided(data: dict, event) -> None:
 	(holds only the client-reviewer role) per the Design 75 §3 governance guard;
 	the engine then dispatches the next phase.
 	"""
-	from randompack_ai.domains.randompack_brand import GATEWAY_USER
 	from frappe.friday_core.engine.governance import acting_as
-	from randompack_ai.integrations.randompack_client import post_project_note
 	from frappe.model.workflow import apply_workflow
 
+	from randompack_ai.domains.randompack_brand import GATEWAY_USER
+	from randompack_ai.integrations.randompack_client import post_project_note
+
 	rp_project = str(data.get("project") or "")
-	brief = (frappe.db.get_value("Brand Brief", {"rp_project": rp_project}, "name") if rp_project else None) or \
-		_find_brief(_backend_ref(data, event))
+	brief = (
+		frappe.db.get_value("Brand Brief", {"rp_project": rp_project}, "name") if rp_project else None
+	) or _find_brief(_backend_ref(data, event))
 	if not brief:
 		raise ValueError(f"no Brand Brief for RandomPack project {rp_project!r}")
 
 	decision = str(data.get("decision") or "")
 	chosen = str(data.get("chosen_direction") or "")
 	if decision == "Refinement Requested":
-		_warroom(f"**[{rp_project}]** refinement requested: {str(data.get('client_comments') or '')}")
-		post_project_note(rp_project, note=branding.apply("{assistant} noted the refinement request; awaiting the updated direction."))
+		_warroom(f"**[{rp_project}]** refinement requested: {data.get('client_comments') or ''!s}")
+		post_project_note(
+			rp_project,
+			note=branding.apply("{assistant} noted the refinement request; awaiting the updated direction."),
+		)
 		return
 
 	doc = frappe.get_doc("Brand Brief", brief)
@@ -456,7 +478,9 @@ def handle_gate_decided(data: dict, event) -> None:
 
 		warn_if_gates_remain(rp_project, just_decided=str(data.get("which") or data.get("gate") or ""))
 	else:
-		_warroom(f"**[{rp_project}]** gate.decided but brief is at {state!r} — no matching gate transition; ignored.")
+		_warroom(
+			f"**[{rp_project}]** gate.decided but brief is at {state!r} — no matching gate transition; ignored."
+		)
 		return
 
 	with acting_as(GATEWAY_USER):

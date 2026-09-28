@@ -229,9 +229,11 @@ class TestProvisionersPersistTheBrandedPrompt(unittest.TestCase):
 		stored = MagicMock()
 		stored.system_prompt = "You are Friday, the stale one"
 		fake.get_doc.return_value = stored
-		with patch.object(module, "frappe", fake), \
-			patch.object(module, ensure_attr, lambda: {}), \
-			patch.object(branding, "frappe", MagicMock(conf={"friday_assistant_name": "Luma"})):
+		with (
+			patch.object(module, "frappe", fake),
+			patch.object(module, ensure_attr, lambda: {}),
+			patch.object(branding, "frappe", MagicMock(conf={"friday_assistant_name": "Luma"})),
+		):
 			getattr(module, fn_name)()
 		return fake, stored
 
@@ -270,9 +272,11 @@ class TestProvisionersPersistTheBrandedPrompt(unittest.TestCase):
 	def test_new_intake_profile_is_inserted_branded(self):
 		fake = MagicMock()
 		fake.db.exists.return_value = False
-		with patch.object(chat, "frappe", fake), \
-			patch.object(chat, "ensure_intake_platform", lambda: {}), \
-			patch.object(branding, "frappe", MagicMock(conf={"friday_assistant_name": "Luma"})):
+		with (
+			patch.object(chat, "frappe", fake),
+			patch.object(chat, "ensure_intake_platform", lambda: {}),
+			patch.object(branding, "frappe", MagicMock(conf={"friday_assistant_name": "Luma"})),
+		):
 			chat.provision_intake_profile()
 		payload = fake.get_doc.call_args[0][0]
 		self.assertIn("You are Luma,", payload["system_prompt"])

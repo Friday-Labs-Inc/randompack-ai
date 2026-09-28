@@ -31,9 +31,9 @@ import unittest
 from unittest.mock import patch
 
 import frappe
+from frappe.friday_core.engine import workflow_engine
 
 from randompack_ai.domains import randompack_brand as bundle
-from frappe.friday_core.engine import workflow_engine
 
 
 def _new_brief():
@@ -77,9 +77,7 @@ class TestEngineRouting(unittest.TestCase):
 	def setUpClass(cls):
 		frappe.db.rollback()
 		bundle.provision()
-		cls._runner = patch(
-			"frappe.friday_core.tasks.runner.on_agent_task_assigned", lambda **kw: None
-		)
+		cls._runner = patch("frappe.friday_core.tasks.runner.on_agent_task_assigned", lambda **kw: None)
 		cls._runner.start()
 
 	@classmethod
@@ -191,9 +189,7 @@ class TestTheGateCycleActuallyLoops(unittest.TestCase):
 	def setUpClass(cls):
 		frappe.db.rollback()
 		bundle.provision()
-		cls._runner = patch(
-			"frappe.friday_core.tasks.runner.on_agent_task_assigned", lambda **kw: None
-		)
+		cls._runner = patch("frappe.friday_core.tasks.runner.on_agent_task_assigned", lambda **kw: None)
 		cls._runner.start()
 
 	@classmethod
@@ -237,6 +233,4 @@ class TestTheGateCycleActuallyLoops(unittest.TestCase):
 		self.assertEqual(brief.workflow_state, "Gate Prep")
 		second = _task_for(brief.name, "gate_prep")
 		self.assertIsNotNone(second, "the second gate needs its own prep task")
-		self.assertNotEqual(
-			second["name"], first["name"], "the second gate reused the first gate's task"
-		)
+		self.assertNotEqual(second["name"], first["name"], "the second gate reused the first gate's task")

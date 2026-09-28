@@ -18,8 +18,9 @@ from __future__ import annotations
 import unittest
 from unittest.mock import MagicMock, patch
 
-from randompack_ai.domains import randompack_brand as brand
 from frappe.friday_core.mcp import sync
+
+from randompack_ai.domains import randompack_brand as brand
 
 _M = "randompack_ai.domains.randompack_brand"
 

@@ -35,9 +35,7 @@ class TestDesign95MachineShape(unittest.TestCase):
 		# A decided gate enters AI Production (not the old Buildout).
 		self.assertEqual(_TRANSITIONS[("Gate Review", "Approve Gate")][0], "AI Production")
 		# Production must pass the human CD before the client track.
-		self.assertEqual(
-			_TRANSITIONS[("AI Production", "Complete Production")][0], "CD Internal Gate"
-		)
+		self.assertEqual(_TRANSITIONS[("AI Production", "Complete Production")][0], "CD Internal Gate")
 
 	def test_internal_gate_has_approve_and_refine_loop(self):
 		# Approval goes back to Gate Prep, not on to a second numbered gate: how

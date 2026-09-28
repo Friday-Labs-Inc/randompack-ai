@@ -18,7 +18,6 @@ the HMAC signature IS the authentication, verified before anything is read.
 """
 
 import frappe
-
 from frappe.friday_core.surfaces import chat_spine
 
 CONNECTOR_NAME = "randompack-system"
@@ -125,7 +124,7 @@ def overview():
 	payload = frappe.request.get_json(silent=True) or {}
 	try:
 		limit = min(MAX_LIMIT, max(1, int(payload.get("limit") or 20)))
-	except (TypeError, ValueError):
+	except TypeError, ValueError:
 		limit = 20
 
 	return {

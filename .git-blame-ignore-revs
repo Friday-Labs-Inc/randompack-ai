@@ -1,0 +1,12 @@
+# Commits that changed formatting only. `git blame --ignore-revs-file` and
+# GitHub both skip these, so adopting the house formatter does not cost the repo
+# its authorship history (Standard §3).
+#
+# Configure it once locally:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# Append the full 40-character SHA of each formatting-only commit below, with a
+# comment naming it.
+
+# ruff format + import sort on adopting the engineering standard, 2026-09-28.
+14cb5d9b8d6fd5b00bbb8bd3a6a1e96a5e8711be

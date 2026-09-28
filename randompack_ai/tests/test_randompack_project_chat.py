@@ -16,9 +16,7 @@ from unittest.mock import MagicMock
 
 from randompack_ai.surfaces import randompack_project_chat as pc
 
-_GATE1 = {
-	"open_gate": {"which": "Gate 1", "directions": [{"label": "A"}, {"label": "B"}, {"label": "C"}]}
-}
+_GATE1 = {"open_gate": {"which": "Gate 1", "directions": [{"label": "A"}, {"label": "B"}, {"label": "C"}]}}
 _GATE2 = {"open_gate": {"which": "Gate 2", "directions": None}}
 _NO_GATE = {"open_gate": {"which": None}}
 
@@ -56,7 +54,9 @@ class TestValidateAction(unittest.TestCase):
 	# -- the drops (defence-in-depth) ----------------------------------------
 
 	def test_no_open_gate_drops_everything(self):
-		self.assertIsNone(pc.validate_action(_act(gate="Gate 1", decision="Direction Selected", direction="A"), _NO_GATE))
+		self.assertIsNone(
+			pc.validate_action(_act(gate="Gate 1", decision="Direction Selected", direction="A"), _NO_GATE)
+		)
 
 	def test_wrong_gate_is_dropped(self):
 		# The hallucination killer: a Gate 2 action while Gate 1 is open.
@@ -79,7 +79,9 @@ class TestValidateAction(unittest.TestCase):
 		self.assertNotIn("direction", out)  # stripped, not passed through
 
 	def test_unknown_kind_is_dropped(self):
-		self.assertIsNone(pc.validate_action(_act(kind="mystery", gate="Gate 2", decision="Approved"), _GATE2))
+		self.assertIsNone(
+			pc.validate_action(_act(kind="mystery", gate="Gate 2", decision="Approved"), _GATE2)
+		)
 
 	def test_garbage_shapes_never_raise(self):
 		for bad in (None, "x", 42, [], {}):
@@ -95,7 +97,9 @@ class TestValidateAction(unittest.TestCase):
 
 class TestParseAction(unittest.TestCase):
 	def test_strict_json(self):
-		out = pc._parse_action('{"action": {"kind": "gate_decision", "gate": "Gate 2", "decision": "Approved"}}')
+		out = pc._parse_action(
+			'{"action": {"kind": "gate_decision", "gate": "Gate 2", "decision": "Approved"}}'
+		)
 		self.assertEqual(out["decision"], "Approved")
 
 	def test_null_action_and_garbage(self):
@@ -258,5 +262,4 @@ class TestAGateIsWhatItAsks(unittest.TestCase):
 
 	def test_naming_a_gate_that_is_not_open_is_dropped(self):
 		ctx = self._context("Build review")
-		self.assertIsNone(
-			pc.validate_action(self._action("Sitemap sign-off", "Approved"), ctx))
+		self.assertIsNone(pc.validate_action(self._action("Sitemap sign-off", "Approved"), ctx))

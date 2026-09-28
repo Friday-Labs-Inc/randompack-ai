@@ -40,8 +40,6 @@ from __future__ import annotations
 import json
 
 import frappe
-
-from randompack_ai import branding
 from frappe.friday_core.conversation.intake import extract_deltas
 from frappe.friday_core.llm.usage import record_usage
 from frappe.friday_core.surfaces import chat_spine
@@ -51,6 +49,8 @@ from frappe.friday_core.surfaces.chat_spine import (
 from frappe.friday_core.surfaces.chat_spine import (
 	sse,
 )
+
+from randompack_ai import branding
 
 __all__ = ["chat_finalize", "chat_send", "provision_intake_profile", "sse", "wire_deltas"]
 
@@ -176,7 +176,7 @@ def _brand_attributes() -> list[str]:
 	if cached is not None:
 		try:
 			return json.loads(cached)
-		except (ValueError, TypeError):
+		except ValueError, TypeError:
 			return []
 
 	from frappe.friday_core.connectors.client import send
@@ -248,7 +248,7 @@ INTAKE_SYSTEM_PROMPT = (
 	"do not answer. Never make it a gate.\n\n"
 	"BREVITY IS A COURTESY. One or two sentences, then one question. If they answer in a single "
 	"word, accept it and move on — never push twice on the same field.\n\n"
-	"\"I DON'T KNOW\" IS A COMPLETE ANSWER. Plenty is decided later in the process. Take it, say "
+	'"I DON\'T KNOW" IS A COMPLETE ANSWER. Plenty is decided later in the process. Take it, say '
 	"so warmly, and move to the next thing.\n\n"
 	"NEVER PROMISE A PRICE, A DATE, OR A DELIVERABLE. You gather; the studio quotes. If asked "
 	"what it costs, say that is what this conversation is for.\n\n"
@@ -392,7 +392,7 @@ def chat_send():
 		return {"ok": False, "error": "bad signature"}
 	try:
 		body = json.loads(raw or b"{}")
-	except (ValueError, TypeError):
+	except ValueError, TypeError:
 		frappe.local.response["http_status_code"] = 400
 		return {"ok": False, "error": "bad request"}
 
@@ -421,7 +421,7 @@ def chat_finalize():
 		return {"ok": False, "error": "bad signature"}
 	try:
 		session_id = (json.loads(raw or b"{}").get("session_id") or "").strip()
-	except (ValueError, TypeError):
+	except ValueError, TypeError:
 		session_id = ""
 	if not session_id:
 		frappe.local.response["http_status_code"] = 400

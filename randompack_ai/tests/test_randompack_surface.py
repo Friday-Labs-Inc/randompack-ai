@@ -122,8 +122,11 @@ class TestBriefReachesTheCreativeDirectorAtIntake(unittest.TestCase):
 	for judging an enquiry learned of it when money landed."""
 
 	_SNAPSHOT = {
-		"company_name": "Loop Coffee", "full_name": "Ari", "what_you_do": "Roast coffee.",
-		"differentiator": "Single origin.", "personality": ["warm", "honest"],
+		"company_name": "Loop Coffee",
+		"full_name": "Ari",
+		"what_you_do": "Roast coffee.",
+		"differentiator": "Single origin.",
+		"personality": ["warm", "honest"],
 	}
 
 	def _event(self):
@@ -135,16 +138,22 @@ class TestBriefReachesTheCreativeDirectorAtIntake(unittest.TestCase):
 	@patch(f"{_S}._assign_to_cd")
 	@patch(f"{_S}.frappe")
 	def test_creates_the_brief_and_a_task_on_the_desk(self, mock_frappe, assign, warroom):
-		mock_frappe.db.get_value.return_value = None   # no brief, no rp_project, no project yet
-		mock_frappe.db.exists.return_value = False       # no task yet
+		mock_frappe.db.get_value.return_value = None  # no brief, no rp_project, no project yet
+		mock_frappe.db.exists.return_value = False  # no task yet
 		mock_frappe.as_json.side_effect = json.dumps
 		inserted = MagicMock()
 		inserted.name = "TASK-1"
 		mock_frappe.get_doc.return_value.insert.return_value = inserted
 
 		randompack.handle_brief_submitted(
-			{"brief": "RP-BRIEF-9", "project": "PROJ-9", "company_name": "Loop Coffee",
-			 "brief_snapshot": self._SNAPSHOT}, self._event())
+			{
+				"brief": "RP-BRIEF-9",
+				"project": "PROJ-9",
+				"company_name": "Loop Coffee",
+				"brief_snapshot": self._SNAPSHOT,
+			},
+			self._event(),
+		)
 
 		payloads = [c[0][0] for c in mock_frappe.get_doc.call_args_list if isinstance(c[0][0], dict)]
 		brief = next(p for p in payloads if p["doctype"] == "Brand Brief")
@@ -163,14 +172,18 @@ class TestBriefReachesTheCreativeDirectorAtIntake(unittest.TestCase):
 	@patch(f"{_S}.frappe")
 	def test_a_replay_adds_nothing_to_the_desk(self, mock_frappe, assign, warroom):
 		mock_frappe.db.get_value.return_value = "BB-0007"  # brief already ingested
-		mock_frappe.db.exists.return_value = True          # task already on the desk
+		mock_frappe.db.exists.return_value = True  # task already on the desk
 
 		randompack.handle_brief_submitted(
 			{"brief": "RP-BRIEF-9", "company_name": "Loop Coffee", "brief_snapshot": self._SNAPSHOT},
-			self._event())
+			self._event(),
+		)
 
-		task_inserts = [c for c in mock_frappe.get_doc.call_args_list
-						if c[0] and isinstance(c[0][0], dict) and c[0][0].get("doctype") == "Task"]
+		task_inserts = [
+			c
+			for c in mock_frappe.get_doc.call_args_list
+			if c[0] and isinstance(c[0][0], dict) and c[0][0].get("doctype") == "Task"
+		]
 		self.assertEqual(task_inserts, [])
 		assign.assert_not_called()
 
